@@ -1,0 +1,71 @@
+% !TEX program = xelatex
+% !TEX root = thesis.tex
+\documentclass[12pt,oneside,openany,a4paper]{book}
+
+\input{setup/preamble.tex} 
+\input{setup/macros.tex}
+\let\cleardoublepage\clearpage
+\begin{document}
+	
+	\frontmatter
+	
+	% --- 1. 无页码区域 ---
+	\hypersetup{pageanchor=false} 
+	\pagestyle{empty}              
+	
+	% \input{sections/guideline.tex}
+	% \clearpage 
+	
+	\input{sections/cover.tex}
+	\clearpage
+	
+	\input{sections/title.tex}
+	\clearpage
+	
+	% Abstract 和 ToC
+	\input{sections/abstract.tex}
+	
+	\input{sections/table_of_contents}
+	
+	% --- 2. 罗马数字页码区域 (从 List of Figures 开始为 i) ---
+	\hypersetup{pageanchor=true} 
+	\pagestyle{plain}            
+	\pagenumbering{roman}        
+	\setcounter{page}{1}         
+	
+	\input{sections/list_of_tables_and_figures}
+	\clearpage
+	
+	% 致谢 (iv)
+	\input{sections/acknowledgement.tex}
+	
+	% 切换到正文页码：抑制 \pagenumbering 的清页，避免与 \chapter 的清页叠加
+	\begingroup
+	\let\origclearpage\clearpage
+	\let\clearpage\relax
+	\pagenumbering{arabic}
+	\endgroup
+	
+	% --- 3. 正文 (阿拉伯数字页码 1, 2, 3...) ---
+	% 保持 \mainmatter 的编号语义，但不触发额外换页
+	\makeatletter
+	\@mainmattertrue
+	\makeatother
+	
+	\input{sections/main_text}
+	
+	
+	% --- 4. 参考文献 ---
+	\nocite{*} % 如果希望列出所有参考文献（包括未引用的），取消注释此行
+	\renewcommand{\bibsection}{\chapter*{\bibname}}
+	\phantomsection
+	\addcontentsline{toc}{chapter}{REFERENCES}
+	\bibliography{bib/mybib}
+	\clearpage
+	
+	% --- 5. 附录 ---
+	\appendix
+	\input{sections/appendix.tex}
+	% 【注意】文档结束前不需要加 \clearpage
+	
+\end{document}

@@ -1,0 +1,74 @@
+% 临时开启单倍行距和较小字体，以适应单页显示
+
+\begingroup 
+\small            % 缩小字号
+\parskip=0pt      % 段落间距设为0
+\linespread{1.0}\selectfont  % 单倍行距
+\vspace*{-2.5cm}
+% --- 标题部分：居中 + 下划线 ---
+\begin{center}
+	{\Large \textbf{Guideline for Writing Project Report}} \\[0.5em]
+	\vspace{-1.5em}
+	\rule{\widthof{\Large \textbf{Guideline for Writing Project Report}}}{1pt}
+\end{center}
+%\vspace{-0.5em} % 减少标题和列表的间距
+\begin{enumerate}[nosep, leftmargin=*] % nosep 让列表非常紧凑
+	\item The report should be type-written in English in the \textbf{THIRD PERSON} in double line spacing.
+	
+	\item The content of the report should be in the following order:
+	\begin{enumerate}[nosep]
+		\item Cover page
+		\item Title page
+		\item Abstract
+		\item Table of contents
+		\item List of figures (if any)
+		\item List of tables (if any)
+		\item List of abbreviations (if any)
+		\item Acknowledgements
+		\item Main body
+		\item References \\
+		A reference section is a required component. Failure to citation of prior works may be interpreted as claiming those works to be your own. Plagiarism is one of the most serious offences.
+		\item Appendices (if any)
+		\item Work Breakdown
+	\end{enumerate}
+	\vspace{1.5em}
+	\item The other format details are shown below:
+	\vspace{-0.5em}
+	\begin{center}
+		\renewcommand{\arraystretch}{1.2} % 如果觉得表格太挤，可以取消注释这行
+		\begin{tabular}{|p{0.32\textwidth}|p{0.58\textwidth}|}
+			\hline
+			Paper Size & A4 \\
+			\hline
+			Line Spacing & Double Spacing \\
+			\hline
+			Top and Bottom Margins & 25 mm \\
+			\hline
+			Left Margins & 32 mm \\
+			\hline
+			Right Margins & 25 mm \\
+			\hline
+			Font & Times New Roman \\
+			\hline
+			Main Text Font Size & 12 points \\
+			\hline
+			Chapter Heading Font Size & 14 points, in Capital \\
+			\hline
+			Section Heading Font Size & 12 points, in Capital \\
+			\hline
+			Tables / Figures & Consecutively numbered with titles above for tables and below for figures. \\
+			\hline
+			Equations & Centered and numbered consecutively. Equation numbers appear at the extreme right of text in parentheses. Equations are referred as Eq. (1), Eq. (2) in text.  \\
+			\hline
+		\end{tabular}
+	\end{center}
+	
+	
+	\item The hard copy should be printed as single sided.
+	
+	\item Students should strictly follow the report format; otherwise assessment will not be carried out.
+	
+	\item Students are reminded to take note of data integrity. Data fabrication is a serious misconduct.
+\end{enumerate}
+
+\endgroup % 结束本页的特殊设置

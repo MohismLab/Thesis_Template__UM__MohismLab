@@ -1,0 +1,51 @@
+
+\makeatletter
+
+% 1. 重定义 \listoffigures (图目录)
+\renewcommand\listoffigures{%
+	\begin{center}
+		\vspace*{-1cm} 
+		{\normalfont\fontsize{14pt}{16pt}\selectfont LIST OF FIGURES}
+	\end{center}
+	\vspace{1em}
+	\@starttoc{lof} 
+}
+
+
+\renewcommand\listoftables{%
+	\begin{center}
+		\vspace*{-1cm}
+		{\normalfont\fontsize{14pt}{16pt}\selectfont LIST OF TABLES}
+	\end{center}
+	\vspace{1em}
+	\@starttoc{lot}
+}
+
+\makeatother
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{chapter}{LIST OF FIGURES} 
+\listoffigures
+
+
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{chapter}{LIST OF TABLES} 
+\listoftables
+
+
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{chapter}{LIST OF ABBREVIATIONS} 
+
+% 标题
+\begin{center}
+	\vspace*{-1cm}
+	{\normalfont\fontsize{14pt}{16pt}\selectfont LIST OF ABBREVIATIONS}
+\end{center}
+
+\vspace{1em}
+

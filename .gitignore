@@ -1,0 +1,32 @@
+# LaTeX 编译产生的临时文件
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.log
+*.out
+*.toc
+*.thm
+*.synctex.gz
+*.synctex(busy)
+*.nav
+*.snm
+*.vrb
+*.bcf
+*.run.xml
+*.idx
+*.ilg
+*.ind
+
+# 编译生成的 PDF（如果你想分享源码而非成品，取消下面的注释）
+# *.pdf
+
+# 编辑器临时文件
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
