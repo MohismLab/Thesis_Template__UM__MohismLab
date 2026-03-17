@@ -19,13 +19,14 @@
 \usepackage{array}    % 用于表格控制
 \usepackage{fancyhdr} % 页眉页脚
 \usepackage{titlesec}
+\usepackage[nohyperlinks]{acronym}
 % --------------------end--------------------
 
 % --------------------begin--------------------
 % Declaring the margin inside each page
 \usepackage[
-    inner=4.0cm,% left margin on an odd page
-    outer=2.7cm,% right margin on an odd page
+    inner=3.2cm,% left margin on an odd page
+    outer=2.5cm,% right margin on an odd page
     bottom=2.5cm,
     top=2.5cm,
     footskip=1.0cm, % the margin for footnote
@@ -81,7 +82,7 @@
 \usepackage{xcolor}
 \usepackage{latexsym}
 
-\setmainfont{Times New Roman}
+\setmainfont{TeX Gyre Termes}
 % --------------------end--------------------
 
 
@@ -95,7 +96,7 @@
 \usepgfplotslibrary{fillbetween}
 
 \usepackage{tikz}
-\usetikzlibrary{arrows, decorations.text, shapes.geometric, positioning, decorations.pathreplacing, calligraphy, patterns}
+\usetikzlibrary{arrows, arrows.meta, decorations.text, shapes.geometric, positioning, decorations.pathreplacing, calligraphy, patterns, fit}
 % --------------------end--------------------
 
 
@@ -128,22 +129,23 @@
 
 
 % --------------------begin--------------------
-% Support for Chinese encoding
-\usepackage{CJKutf8}
-% --------------------end--------------------
-
-
-% --------------------begin--------------------
 % Support for other features related to figures and tables
 \usepackage{rotating}
 \usepackage{caption}
 \captionsetup{%
   font=footnotesize,% set font size to footnotesize
-  labelfont=bf, % bold label (e.g., Figure 3.2) font
+  labelfont=normalfont, % keep caption labels in normal weight
   list-entry=heading % comment this line to use the short caption in list of tables and figures
 }
 \usepackage{subcaption}
 % \setlength{\textfloatsep}{10pt plus 1.0pt minus 2.0pt}
+
+% Sequential figure/table numbering (1, 2, 3... not 1.1, 1.2...)
+\usepackage{chngcntr}
+\counterwithout{footnote}{chapter}
+\counterwithout{figure}{chapter}
+\counterwithout{table}{chapter}
+\counterwithout{equation}{chapter}
 % --------------------end--------------------
 
 
@@ -191,25 +193,31 @@
 % --------------------end--------------------
 
 
-% 修改节标题 (Section) 格式
+% 修改节标题 (Section) 格式 — 大写、带编号
 \titleformat{\section}
     {\normalfont\fontsize{12pt}{14pt}\selectfont}
-	{} % 这里留空，去除编号
-	{0pt} % 标签与标题间距设为 0
-	{}
-	
+	{\thesection\quad}
+	{0pt}
+	{\MakeUppercase}
+
 \titleformat{\subsection}
 	{\normalfont\normalsize}
 	{\thesubsection}
+	{1em}
+	{}
+
+\titleformat{\subsubsection}
+	{\normalfont\normalsize}
+	{\thesubsubsection}
 	{1em}
 	{}
 % --------------------begin--------------------
 % Commands for controlling the format of Table of Contents
 \usepackage{tocloft}
 
-\cftsetpnumwidth{42pt}
-\cftsetrmarg{42pt}
-\renewcommand{\cftdotsep}{5.0}
+\cftsetpnumwidth{14pt}
+\cftsetrmarg{28pt}
+\renewcommand{\cftdotsep}{0.4}
 
 % \makeatletter
 %     \renewcommand{\@tocrmarg}{3.0em}
@@ -217,6 +225,8 @@
 % \makeatother
 
 \newlength{\mylen}
+\newlength{\toclevelindent}
+\settowidth{\toclevelindent}{WW}
 % format for Part declaration
 \renewcommand{\cftpartpresnum}{Part~}
 \settowidth{\mylen}{\cftpartpresnum\cftpartaftersnum} % extra space
@@ -226,11 +236,16 @@
 \renewcommand{\cftchappresnum}{CHAPTER~}
 \renewcommand{\cftchapaftersnum}{: }
 \settowidth{\mylen}{\cftchappresnum\cftchapaftersnum} % extra space
-\addtolength{\cftchapnumwidth}{\mylen} % add the extra space
+\addtolength{\cftchapnumwidth}{50pt}% add the extra space
+
+\setlength{\cftsecnumwidth}{1.6em}
+\setlength{\cftsubsecnumwidth}{2.4em}
 
 % Add dots after Part and Section declaration
 \renewcommand{\cftpartleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
 
 % Remove the space between chapters in list of tables/figures
 % (Custom \@chapter commented out — titlesec manages chapter mechanism;
@@ -259,36 +274,37 @@
 
 \renewcommand{\cftfigpresnum}{Figure~}
 \renewcommand{\cftfigaftersnum}{:}
-\setlength{\cftfignumwidth}{60pt}
+\setlength{\cftfignumwidth}{50pt}
 \setlength{\cftfigindent}{0pt}
 
 \renewcommand{\cfttabpresnum}{Table~}
 \renewcommand{\cfttabaftersnum}{:}
-\setlength{\cfttabnumwidth}{60pt}
+\setlength{\cfttabnumwidth}{50pt}
 \setlength{\cfttabindent}{0pt}
 
 \setlength{\cftbeforepartskip}{0pt}
 \setlength{\cftbeforechapskip}{0pt}
 \setlength{\cftbeforesecskip}{0pt}
+ \setlength{\cftbeforesubsecskip}{0pt}
 
 \setlength{\cftpartindent}{0pt}
-\setlength{\cftchapindent}{0pt}
-\setlength{\cftsecindent}{30pt}
-\setlength{\cftsubsecindent}{60pt}
+\setlength{\cftchapindent}{-23pt}
+\setlength{\cftsecindent}{-0.4em}
+\setlength{\cftsubsecindent}{1.3em}
 
 \setlength{\cftbeforepartskip}{0pt}
 \setlength{\cftbeforechapskip}{0pt}
 \setlength{\cftbeforesecskip}{0pt}
 \setlength{\cftbeforesubsecskip}{0pt}
 
-\renewcommand{\cftpartfont}{\normalsize}
-\renewcommand{\cftpartpagefont}{\normalsize}
-\renewcommand{\cftchapfont}{\normalsize}
-\renewcommand{\cftchappagefont}{\normalsize}
-\renewcommand{\cftsecfont}{\normalsize}
-\renewcommand{\cftsecpagefont}{\normalsize}
-\renewcommand{\cftsubsecfont}{\normalsize}
-\renewcommand{\cftsubsecpagefont}{\normalsize}
+\renewcommand{\cftpartfont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
+\renewcommand{\cftpartpagefont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
+\renewcommand{\cftchapfont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
+\renewcommand{\cftchappagefont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
+\renewcommand{\cftsecfont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
+\renewcommand{\cftsecpagefont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
+\renewcommand{\cftsubsecfont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
+\renewcommand{\cftsubsecpagefont}{\normalfont\fontsize{12pt}{14pt}\selectfont}
 
 % --------------------end--------------------
 
@@ -315,6 +331,9 @@
 
 \baselineskip \the\baselineskip plus .25pt minus .25pt
 
+% No paragraph indent; blank-line separation
+% (parskip package below handles the actual values)
+
 % --------------------end--------------------
 
 
@@ -329,7 +348,7 @@
 
 % Always use an indent at the beginning of each paragraph
 % Increasing the skip space between paragraphs
-\usepackage[skip=0pt plus 6pt, indent=24pt]{parskip}
+\usepackage[skip=1em plus 0.3em minus 0.2em, indent=0pt]{parskip}
 % \usepackage[skip=0pt plus 3pt, indent=2em]{parskip}
 % \usepackage[skip=12pt, indent=2em]{parskip}
 % \usepackage[skip=12pt plus2pt, indent=2em]{parskip}
@@ -372,7 +391,7 @@
 \titleformat{\chapter}
     {\normalfont\fontsize{14pt}{16pt}\selectfont\centering}
     {\chaptername~\thechapter:}
-    {0.5em}
+    {0.1em}
     {}
 
 % remove page number on the ``Part'' pages
@@ -388,7 +407,7 @@
 \titlespacing{\subsection}{0pt}{15pt plus 9pt}{9pt plus 9pt}
 \titlespacing{\subsubsection}{0pt}{12pt plus 6pt}{6pt plus 6pt}
 
-\titleformat*{\paragraph}{\normalfont\normalsize\bfseries}
+\titleformat*{\paragraph}{\normalfont\normalsize}
 % \titleformat{\paragraph}{\vspace{-24pt}\vspace*{24pt}\normalfont\normalsize\bfseries}{}{}{}
 % \titlespacing{\paragraph}{0pt}{8pt plus 4pt minus 4pt}{8pt plus 4pt minus 4pt}
 % \titlespacing{\paragraph}{0pt}{8pt plus 4pt}{8pt plus 4pt}
@@ -447,10 +466,8 @@
 
 % --------------------begin--------------------
 % Declaring the bibliography style
-\usepackage{natbib}
+\usepackage[numbers,sort&compress]{natbib}
 \renewcommand{\bibname}{REFERENCES}
-\renewcommand\cite{\citep}
-\newcommand\newcite{\citet}
 
 % The following format works for ACL
 % \usepackage{etoolbox}
@@ -465,7 +482,7 @@
 % \bibliographystyle{acl_natbib}
 
 % The following format works for APA style
-\bibliographystyle{apalike}
+\bibliographystyle{IEEEtran}
 
 % \usepackage{refcheck}
 

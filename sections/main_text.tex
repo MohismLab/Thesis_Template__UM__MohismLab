@@ -3,68 +3,997 @@
 % =========================================================
 \chapter{INTRODUCTION}
 
-% 【修改】加入 \normalfont 强制不加粗
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+\section{Research Background}
 
-% 如果需要 Section 出现在目录里，取消下面这行的注释:
-%\addcontentsline{toc}{section}{[Click and Type Chapter Section Title]}
+The rapid advancement of artificial intelligence and deep learning in recent years has significantly transformed robotic manipulation. Conventional robotic systems have long relied on a modular, cascaded ``perception--planning--control'' pipeline. While such architectures offer interpretability, they entail considerable engineering overhead, require domain-specific expertise at each stage, and struggle to cope with the ambiguity and variability inherent in unstructured real-world environments. In response to these limitations, the research community has increasingly shifted from rule-based, hand-engineered approaches toward data-driven, end-to-end learning paradigms that can acquire complex manipulation behaviours directly from raw observations~\cite{zhao2023aloha}.
 
-% 【修改】加入 \normalfont 强制不加粗
-\subsection*{\normalfont [Click and type chapter]}
+A significant factor in this shift has been the emergence of large-scale foundation models. Large Language Models (LLMs) and Vision-Language Models (VLMs)~\cite{beyer2024paligemma} have shown strong capabilities in commonsense reasoning, instruction following, and multimodal understanding. Building on these advances, researchers have begun integrating such models into robotic action generation, giving rise to a new class of architectures known as Vision-Language-Action models (VLA models)~\cite{liu2024rdt1b}. VLA models---exemplified by RT-2~\cite{brohan2023rt2}, OpenVLA~\cite{kim2024openvla}, $\pi_0$~\cite{black2024pi0}, and the more recent $\pi_{0.5}$ released by Physical Intelligence~\cite{black2025pi05}---couple multi-view visual observations, natural language instructions, and proprioceptive robot states within a unified Transformer-based framework. Pretrained on internet-scale multimodal corpora and diverse cross-embodiment robot trajectory datasets, these models exhibit broad generality and generalisation across previously unseen environments and tasks. The most recent $\pi_{0.5}$ model, for instance, jointly trains on mobile manipulation data, stationary robot demonstrations, web-scale image--text pairs, and high-level semantic subgoal trajectories, enabling a mobile manipulator to execute complex household tidying and cleaning tasks lasting ten to fifteen minutes in novel, fully unseen home environments guided solely by a single high-level language command~\cite{black2025pi05}. This end-to-end foundation-model paradigm equips robots with the ability to interpret semantically rich instructions and draw upon broad open-world common sense, representing an important step toward the large-scale deployment of embodied intelligence.
 
-\noindent The text should be typed in Times New Roman 12 with double spacing. 
+Despite the impressive semantic generalisation demonstrated by existing VLA models in long-horizon household service scenarios, their application to \emph{fine-grained manipulation tasks}---operations subject to strict dynamic constraints and narrow-clearance positioning requirements---reveals fundamental limitations~\cite{chi2023diffusionpolicy,hansel2025rtchunk}. Tasks of this nature, such as the precise placement of PCB components on industrial assembly lines or the high-tolerance loading of workpieces into trays, require not only reliable grasp-and-place capabilities but also sustained spatial accuracy and smooth, collision-free motion throughout execution~\cite{wu2025lipo,berscheid2021ruckig}.
+
+Current state-of-the-art general-purpose VLA models are primarily optimised for macroscopic task success rates and cross-domain transferability, with comparatively little attention given to the fine-grained kinematic quality of the generated trajectories~\cite{brohan2023rt1,brohan2023rt2}. Since VLA models typically output discrete, high-dimensional action chunks rather than continuous joint-space references, the models do not explicitly account for velocity or acceleration profiles during action generation~\cite{chi2023diffusionpolicy,black2024pi0}. As a consequence, when these predicted actions are executed directly on physical hardware, the resulting trajectories frequently exhibit abrupt acceleration changes and high-frequency end-effector oscillations~\cite{hansel2025rtchunk}. In precision-critical applications such as PCB manipulation, such trajectory irregularities increase the risk of collisions with surrounding fixtures and trays, thereby degrading both task success rates and operational safety~\cite{wu2025lipo}. Addressing this performance gap---improving the motion execution quality and safety of VLA models in high-precision industrial settings---is therefore a key challenge in contemporary embodied intelligence research.
+
+\section{Problem Statement}
+
+Although embodied foundation models such as $\pi_{0.5}$ have achieved notable advances in multi-task generalisation and cross-scene transfer, deploying them for industrial-grade fine-grained manipulation---exemplified by the high-precision grasping and placement of PCB components---exposes persistent technical limitations in both the policy generation and motion control paradigms~\cite{black2025pi05,chi2023diffusionpolicy}. Four principal challenges can be identified.
+
+(1) Computational constraints and generalisation limits of conventional fine-tuning.
+Prevailing VLA models are largely pretrained via behavioural cloning (BC) on large expert demonstration datasets~\cite{brohan2023rt1,openx2024}. When deployed in novel environments or when the system encounters out-of-distribution (OOD) states, pure imitation-learning policies frequently fail to self-correct and generalise~\cite{ross2011dagger}. Adapting the model to a new task typically requires collecting additional expert demonstrations and performing further fine-tuning---a process that is both costly and, for models with parameter counts in the billions (e.g., $\pi_{0.5}$), largely infeasible under realistic computational budgets~\cite{black2025pi05}. Even parameter-efficient methods such as Low-Rank Adaptation (LoRA)~\cite{hu2022lora} do not fundamentally resolve this issue, since supervised fine-tuning alone cannot endow the model with the capacity to explore and improve through trial-and-error interaction with the environment~\cite{yang2024dppo}.
+
+(2) Intrinsic difficulties of applying reinforcement learning to generative policy models.
+Reinforcement learning (RL) has attracted considerable interest as a means of enabling VLA models to self-optimise beyond the limits of imitation learning. However, applying RL directly to models whose action heads are built upon diffusion or flow-matching architectures introduces non-trivial optimisation challenges~\cite{wang2025dsrl,yang2024dppo,black2024ddrl}, which manifest in three main ways:
+
+\begin{itemize}
+    \item \textit{Backpropagation through the diffusion trajectory} (e.g., DRaFT~\cite{clark2024draft}): Propagating reward gradients through the full multi-step denoising process results in prohibitive memory consumption and is prone to gradient explosion or vanishing, rendering training highly unstable~\cite{wang2025dsrl}.
+
+    \item \textit{Policy gradient methods} (e.g., DPPO, FlowGRPO): These approaches generally approximate the per-step denoising distribution with a Gaussian and construct policy gradients accordingly. This approximation is only valid when the denoising step size is very small, which forces the model to use a large number of denoising steps, expands the exploration space, and reduces training efficiency. Accumulated multi-step approximation errors further compromise the reliability of policy updates~\cite{yang2024dppo}.
+
+    \item \textit{Advantage-weighted regression} (e.g., AWR): Reweighting samples by exponentiated advantages yields relatively stable training but entails a fundamental optimality--stability trade-off. Increasing the temperature coefficient to encourage the policy to favour high-reward samples causes weights to grow exponentially, risking numerical instability or training collapse; constraining the temperature to preserve stability correspondingly limits the degree of policy improvement~\cite{psenka2024qsm}.
+\end{itemize}
+
+(3) Trajectory roughness and absence of physical constraints in discrete action-chunk generation.
+Contemporary VLA models, including $\pi_{0.5}$, commonly adopt action chunking at the output stage, predicting a sequence of discrete end-effector poses or joint positions over a short planning horizon~\cite{black2024pi0,black2025pi05}. This end-to-end generation scheme prioritises high-level action fidelity over the underlying kinematic quantities---velocity, acceleration, and jerk---that govern physical feasibility. Consequently, the predicted trajectories frequently lack smoothness: transitions between successive action chunks can exhibit abrupt discontinuities or brief stalls in joint space~\cite{hansel2025rtchunk,wu2025lipo}. In precision-sensitive tasks such as PCB grasping, these acceleration transients and kinematic discontinuities readily induce high-frequency end-effector oscillations, increasing the risk of collisions with fixtures and trays, and potentially causing grasp failures or damage to delicate workpieces~\cite{berscheid2021ruckig}.
+
+(4) Inference latency of large models versus the real-time demands of closed-loop control.
+Robotic closed-loop control imposes strict real-time requirements. Fine-grained manipulation tasks typically call for control rates of 50~Hz or higher to ensure timely responses to environmental disturbances~\cite{hansel2025rtchunk,shi2024deploy}. However, the substantial parameter counts of VLA models and the iterative nature of their generative decoders---whether autoregressive token prediction or multi-step diffusion denoising---result in comparatively long per-inference latencies. On commodity hardware such as an NVIDIA RTX 4090 GPU, this latency reduces the effective command frequency well below the requirements~\cite{belkhale2025ftvla} of the underlying low-level controller, introducing perceptible motion stuttering and lag that further amplify trajectory errors and system instability~\cite{black2025pi05,hansel2025rtchunk}.
+
+In summary, devising a system architecture that can efficiently incorporate reinforcement learning for policy refinement while simultaneously mitigating the inference latency and trajectory roughness of large-scale VLA models---under realistic computational constraints---represents the core challenge that must be addressed to enable reliable deployment of embodied foundation models in fine-grained manipulation settings.
+
+\section{Research Objectives and Significance}
+
+In response to the computational bottlenecks, policy fine-tuning difficulties, trajectory roughness, and high inference latency identified above, this thesis proposes a lightweight VLA policy steering and enhancement framework~\cite{kumar2024steering}. In particular, the proposed steering mechanism does not require updating the backbone during RL. The central objective is to enable general-purpose models such as $\pi_{0.5}$ to be effectively adapted to high-precision fine-grained manipulation tasks---including PCB component handling on industrial assembly lines---under realistic computational constraints~\cite{wang2025dsrl}.
+
+The contributions of this work carry significance at two complementary levels.
+
+(1) Theoretical contribution at the algorithmic level: validating a latent-space fine-tuning paradigm for generative policies.
+Without retraining or modifying the billions of parameters that constitute the backbone of the VLA model, this thesis explores and validates the feasibility of Diffusion Steering via Reinforcement Learning (DSRL) in the latent space. By treating the large-scale VLA model as part of the environment dynamics and confining the reinforcement learning optimisation to the input noise distribution, the work demonstrates that the behavioural outputs of a generative policy can be effectively corrected and reshaped at a fraction of the computational cost required for full fine-tuning~\cite{wang2025dsrl}. Furthermore, the thesis introduces a subtask-decomposition-based dense reward scheme that addresses the sparse-reward convergence difficulty inherent in long-horizon tasks, offering a sample-efficient strategy for applying reinforcement learning to the fine-tuning of end-to-end foundation models.
+
+(2) Practical contribution at the engineering level: establishing a real-time smooth control paradigm for large-scale models.
+To reconcile the high inference latency of VLA models with the stringent real-time requirements of physical robot control, and to mitigate the trajectory jitter introduced by discrete action-chunk concatenation, this thesis designs and implements a real-time inference and control system for physical robot deployment~\cite{hansel2025rtchunk}. The system adopts an asynchronous, master-worker process architecture that cleanly decouples model inference from low-level device control. In addition, a three-stage action smoothing pipeline is introduced, consisting of Exponential Moving Average (EMA) filtering for noise suppression, Quadratic Programming (QP) for enforcing dynamic feasibility constraints, and cubic spline interpolation for bridging successive action chunks. By addressing command latency and abrupt acceleration transitions at their source, the system improves operational stability and safety during physical execution, and provides a practical reference architecture for the deployment of embodied intelligence models in high-precision industrial settings~\cite{wu2025lipo,berscheid2021ruckig}.
+
+\section{Main Research Content}
+
+To address the challenges of high fine-tuning costs, trajectory roughness, inference latency, and poor robustness to corner cases that arise when deploying large-scale embodied intelligence models on industrial fine-grained manipulation tasks, this thesis takes $\pi_{0.5}$---a Vision-Language-Action (VLA) model---as the foundation and designs a comprehensive reinforcement learning enhancement framework encompassing algorithmic policy steering, system-level optimisation, and data augmentation. The main research content is organised along three directions.
+
+(1) VLA policy steering via latent-space reinforcement learning and dense reward design.
+To overcome the prohibitive computational cost of full fine-tuning and the gradient instability of conventional reinforcement learning applied directly to generative policy models, this thesis adopts Diffusion Steering via Reinforcement Learning (DSRL) in the latent noise space. All parameters of the $\pi_{0.5}$ backbone are frozen during RL; the policy optimisation problem is reformulated as a reinforcement learning search over the model's latent noise input distribution. To address the sparse-reward convergence difficulty that arises in long-horizon industrial grasping tasks, the thesis further introduces a subtask-decomposition-based dense reward mechanism. The overall manipulation sequence is decomposed into 12 sub-tasks, corresponding to the six rounds of PCB pick-and-place operations (where each single pick or place action is treated as an independent sub-task), and a three-tier scoring scheme (Perfect / Success / Failure) is defined to provide immediate feedback at each stage. This formulation improves sample efficiency and task completion rates during policy steering on long-horizon tasks.
+
+(2) Asynchronous inference and multi-stage trajectory smoothing for high-frequency deployment of large models.
+To reconcile the high inference latency inherent to large VLA models with the real-time demands of physical robot control, and to reduce the trajectory discontinuities and end-effector oscillations caused by discrete action chunking, this thesis proposes a real-time inference and smooth control architecture for physical deployment~\cite{belkhale2025ftvla,hansel2025rtchunk}. At the system level, a master-worker asynchronous process architecture is designed in which a high-frequency master process is solely responsible for hardware communication and state maintenance, while a lower-frequency worker process handles model inference; this decoupling allows much of the inference cost of the large model to be hidden from the control loop. At the motion level, a three-stage action smoothing pipeline is constructed: Exponential Moving Average (EMA) filtering first suppresses high-frequency noise within each action chunk; Quadratic Programming (QP) then enforces kinematic constraints on the commanded signal; finally, cubic spline interpolation provides smooth transitions between successive action chunks. Together, these stages reduce the oscillation and collision risks that arise when a large model directly commands a physical manipulator.
+
+(3) Corner case handling and robustness enhancement via a recovery-and-correction mechanism.
+Policies trained exclusively on successful expert demonstrations are known to be brittle when confronted with out-of-distribution states or compounding errors~\cite{ross2011dagger}. To address corner cases that arise in practice---including the absence of a tray, a fully occupied tray, or the robot arm drifting off course due to external disturbances---this thesis introduces a recovery-and-correction data augmentation strategy~\cite{ke2025rac}. Intervention data is deliberately collected under anomalous conditions by first guiding the arm from a failure state back to a safe nominal distribution (the Recovery phase), and then re-executing the correct action sequence to complete the current sub-task (the Correction phase). Incorporating such data into training equips the system with the capacity to self-reset and retry upon encountering previously unseen corner cases, substantially improving operational robustness in complex, dynamic physical environments~\cite{kelly2019hgdagger}.
+
+\section{Thesis Structure}
+
+This thesis is organised around the application of large-scale embodied intelligence models to fine-grained manipulation tasks, following the logical progression of problem identification, theoretical analysis, algorithmic and system design, experimental validation, and concluding remarks. The thesis comprises six chapters, structured as follows.
+
+Chapter 1: Introduction.
+This chapter establishes the research background and motivation. It analyses the principal pain points encountered when applying Vision-Language-Action (VLA) models to high-precision, long-horizon physical manipulation tasks---namely, high fine-tuning costs, trajectory roughness, and inference latency---and presents the research objectives. The chapter concludes with a brief overview of the core contributions and innovations of the thesis.
+
+Chapter 2: Basic Principles and Related Technology.
+This chapter provides the theoretical foundations required for the algorithmic improvements and system design presented in subsequent chapters. It covers the mathematical basis of VLA models and flow-matching-based action generation, introduces the principles of latent-space Diffusion Steering via Reinforcement Learning (DSRL), and reviews fundamental concepts in reinforcement learning. The chapter also surveys the control-theoretic methods employed for post-processing robot trajectories, including Exponential Moving Average (EMA) filtering, Quadratic Programming (QP)-based kinematic constraint enforcement, and cubic spline transition interpolation.
+
+Chapter 3: VLA Policy Steering via Latent-Space Reinforcement Learning and Multi-Stage Smoothing.
+This chapter presents the core technical contributions of the thesis in detail. It begins with an overview of the overall system architecture, followed by an in-depth treatment of the improved DSRL algorithm based on subtask decomposition and dense reward design. The design of the asynchronous inference architecture for high-frequency physical deployment and the three-stage EMA--QP--Cubic action smoothing pipeline are then described. The chapter concludes with the recovery-and-correction data augmentation mechanism developed for handling complex corner cases.
+
+Chapter 4: Experimental Platform and Task Configuration.
+This chapter describes the hardware and software infrastructure used to validate the proposed methods. It details the construction of the Piper-based real-robot platform with multi-view cameras, as well as the ROS2- and MuJoCo-based communication architecture. The PCB pick-and-place fine-grained manipulation task is formally defined, boundary test cases are specified, baseline configurations are described, and the quantitative evaluation metrics adopted throughout the experiments are introduced.
+
+Chapter 5: Data Processing and Analysis.
+This chapter presents comprehensive experimental results and comparative analyses. The task success rates, trajectory smoothness metrics (including acceleration profiles and oscillation magnitudes), and corner-case robustness of the proposed joint ``algorithmic steering + system optimisation + data augmentation'' framework are evaluated against all baselines on real-robot tasks. Ablation studies are conducted to decompose the individual contributions of each system component.
+
+Chapter 6: Conclusion and Future Work.
+The final chapter provides a systematic summary of the research findings and experimental conclusions. It objectively discusses the current limitations of the work---including the dependency on carefully designed reward functions and the remaining computational overhead---and outlines prospective directions for future research on deploying VLA models in industrial-grade fine-grained manipulation.
+
 
 % =========================================================
-% CHAPTER 2: LITERATURE REVIEW
+% CHAPTER 2: BASIC PRINCIPLES AND RELATED TECHNOLOGY
 % =========================================================
-\chapter{LITERATURE REVIEW}
+\chapter{BASIC PRINCIPLES AND RELATED TECHNOLOGY}
 
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+\section{Reinforcement Learning Fundamentals}
 
-\subsection*{\normalfont [Click and type chapter]}
+This chapter reviews the theoretical foundations required for the methods developed in Chapter~3. It first summarises the standard reinforcement learning framework, including the Markov Decision Process (MDP), the Actor-Critic architecture, and reward design. It then introduces Vision-Language-Action (VLA) models and the flow-matching-based action generation mechanism adopted by $\pi_{0.5}$. Building on these two parts, the chapter next explains how reinforcement learning can be transferred from the physical action space to the latent noise space of a generative policy. The final section discusses the trajectory smoothing and control methods used during real-time execution.
 
-\noindent The text should be typed in Times New Roman 12 with double spacing. 
+\subsection{Markov Decision Process}
+
+Reinforcement Learning (RL) studies how an agent improves its decision policy through interaction with an environment so as to maximise cumulative reward. The standard mathematical formulation of an RL problem is the Markov Decision Process:
+\begin{equation}
+    \mathcal{M} = (\mathcal{S}, \mathcal{A}, \mathcal{P}, p_0, \mathcal{R}, \gamma)
+\end{equation}
+where:
+\begin{itemize}
+    \item State space $\mathcal{S}$: the set of all observable environment states. In robotic manipulation tasks, the state typically includes visual observations and the robot's proprioceptive information.
+    \item Action space $\mathcal{A}$: the set of actions that can be executed by the agent. In conventional robot control, these actions may be represented as joint commands, Cartesian poses, or torques.
+    \item Transition kernel $\mathcal{P}(\cdot \mid s, a)$: the probability distribution of the next state after executing action $a$ in state $s$.
+    \item Initial state distribution $p_0$: the distribution over states at the beginning of an episode.
+    \item Reward function $\mathcal{R}(s, a)$: the scalar feedback assigned to the agent after taking action $a$ in state $s$.
+    \item Discount factor $\gamma \in (0, 1]$: the parameter controlling the relative importance of immediate and future rewards.
+\end{itemize}
+
+The optimisation objective of RL is to learn a policy $\pi_\phi(a \mid s)$ that maximises the expected discounted return:
+\begin{equation}
+    J(\phi) = \mathbb{E}_{\tau \sim \pi_\phi}\!\left[\sum_{t=0}^{T} \gamma^t\, \mathcal{R}(s_t, a_t)\right]
+    \label{eq:rl_objective}
+\end{equation}
+where $\tau$ denotes a trajectory generated by the policy interacting with the environment.
+
+\subsection{The Actor-Critic Architecture}
+
+Modern deep RL algorithms commonly adopt the Actor-Critic architecture, which combines policy learning with value estimation.
+
+\begin{itemize}
+    \item Actor network: represents the policy $\pi(a \mid s)$ and produces an action according to the current state.
+    \item Critic network: evaluates the quality of the current decision, typically by approximating a state-value function or state-action value function such as $Q^\pi(s, a)$.
+\end{itemize}
+
+The Critic provides a learning signal to the Actor by estimating which actions yield higher long-term return. In this way, policy optimisation is guided not only by sparse task outcomes but also by intermediate value estimates. This architecture is particularly useful in continuous-control problems, where direct policy search is often unstable or sample inefficient.
+
+\subsection{Reward Function Design: Sparse vs.\ Dense Rewards}
+
+The reward function determines how the task objective is communicated to the learning agent. In practice, reward signals are commonly classified as sparse or dense.
+
+\begin{itemize}
+    \item Sparse reward: non-zero feedback is provided only when the final goal is achieved. A typical example is assigning $+1$ for successful completion and $0$ otherwise. Sparse rewards are simple and closely aligned with the final task objective, but they provide very limited guidance during exploration.
+    \item Dense reward: intermediate feedback is provided throughout task execution, for example according to distance-to-goal, subtask completion, or control stability. Dense rewards provide more informative gradients and usually improve sample efficiency in long-horizon tasks.
+\end{itemize}
+
+For fine-grained manipulation, sparse rewards are often insufficient because successful trajectories are rare and the consequences of early errors may not be reflected until much later. A carefully designed dense reward is therefore important when reinforcement learning is applied to long-horizon robotic tasks.
+
+\section{Vision-Language-Action Models}
+
+Conventional imitation-learning policies are usually designed for a specific task or environment and therefore generalise poorly outside the training distribution. Vision-Language-Action (VLA) models address this limitation by adapting large pretrained Vision-Language Models (VLMs) to robot manipulation data~\cite{brohan2023rt2,kim2024openvla}. By combining semantic understanding with continuous control generation, VLA models provide a unified framework for embodied decision making.
+
+\subsection{Multimodal Transformer Architecture and the VLA Formulation}
+
+The central idea of a VLA model is to convert heterogeneous inputs and outputs into a shared sequential representation that can be processed by a Transformer. In the case of $\pi_{0.5}$~\cite{black2025pi05}, the model receives multi-view visual observations, proprioceptive state, and a natural-language task instruction, and produces both semantic tokens and a future action chunk.
+
+At control timestep $t$, the observation $o_t$ contains a sequence of images from multiple camera viewpoints $[I_1^t, \dots, I_n^t]$ together with the robot state $q_t$. Combined with a high-level language instruction $l$, the model captures the joint conditional distribution over an intermediate semantic output $\hat{l}$ and a future action chunk $a_{t:t+H}$. Following the official technical report of $\pi_{0.5}$, this distribution can be written as:
+\begin{equation}
+    \pi_\theta(a_{t:t+H}, \hat{l} \mid o_t, l) = \pi_\theta(a_{t:t+H} \mid o_t, \hat{l}) \cdot \pi_\theta(\hat{l} \mid o_t, l)
+    \label{eq:vla_factorisation}
+\end{equation}
+Equation~\ref{eq:vla_factorisation} expresses the modelling assumption that the semantic description is first predicted from the observation and language instruction, after which the action chunk is generated conditioned on both the observation and the semantic tokens. This formulation is useful for understanding how semantic reasoning and motion generation are coupled within the same model.
+
+\subsection{Flow-Matching-Based Continuous Action Generation}
+
+Early VLA systems such as RT-2~\cite{brohan2023rt2} discretised continuous actions into text tokens and generated them autoregressively. Although this design allows language and action generation to share one decoder, it is not well suited to high-frequency robot control and may degrade motion smoothness.
+
+To generate continuous actions directly, $\pi_{0.5}$ employs a dedicated Action Expert trained with Flow Matching~\cite{lipman2023flow}. Let $a_{t:t+H}$ denote the ground-truth action chunk and let $w \sim \mathcal{N}(0, I)$ be a Gaussian noise sample. The interpolated noisy action at normalised time $\tau \in [0,1]$ is defined as:
+\begin{equation}
+    a^{\tau,w}_{t:t+H} = \tau\, a_{t:t+H} + (1 - \tau)\, w
+    \label{eq:flow_interp}
+\end{equation}
+This construction describes a path from pure noise at $\tau = 0$ to the target action at $\tau = 1$. Under this parameterisation, the corresponding target flow direction is $(a_{t:t+H} - w)$. The Action Expert is therefore trained to match this target vector field:
+\begin{equation}
+    \mathcal{L}_{\mathrm{Flow}}(\theta) = \mathbb{E}_{\mathcal{D},\,\tau,\,w} \left[ \left\| f_\theta^a\!\left(a^{\tau,w}_{t:t+H},\, o_t,\, l\right) - \left(a_{t:t+H} - w\right) \right\|^2 \right]
+    \label{eq:flow_loss}
+\end{equation}
+Equations~\ref{eq:flow_interp} and~\ref{eq:flow_loss} are both written with respect to the same target direction $(a_{t:t+H} - w)$, ensuring that the interpolation path and the regression objective remain consistent.
+
+\paragraph{Advantages of the generative action expert.}
+Expert demonstrations in fine-grained manipulation are often multimodal. For example, a PCB may be grasped successfully from more than one feasible contact configuration, leading to several valid trajectories. A deterministic regression model trained with mean squared error tends to average over these modes~\cite{shafiullah2022bet}, which may produce trajectories that are not physically executable. Flow-matching-based action generators~\cite{chi2023diffusionpolicy,lipman2023flow} can model such multimodal action distributions more faithfully.
+
+At inference time, the Action Expert starts from an initial Gaussian noise sample $w$ and integrates the learned vector field to obtain a continuous action chunk. The dependence of the final action on the initial latent noise is the key property exploited later by the latent-space policy-steering method.
+
+\section{Reinforcement Learning for Diffusion Steering}
+
+Sections 2.1 and 2.2 provide the two ingredients needed for latent-space policy steering: the optimisation framework of reinforcement learning and the noise-conditioned action generation process of a VLA model. The remaining question is how to apply RL to a generative policy such as $\pi_{0.5}$ without directly fine-tuning its large parameter set. Diffusion Steering via Reinforcement Learning (DSRL)~\cite{wang2025dsrl,kumar2024steering} addresses this problem by moving the RL action space from the physical control domain to the latent noise domain.
+
+\subsection{Inference Dynamics of a Generative Policy and the Noise-Steering Intuition}
+
+For a fixed observation and instruction, the generative action module of $\pi_{0.5}$ can be regarded as a mapping from latent noise to physical action. Given the current state $s$, the model first samples a noise vector $w \sim \mathcal{N}(0, I)$ and then transforms it through the frozen generative process to obtain an executable action $a$.
+
+Because the model is trained on expert demonstrations, random samples from the standard Gaussian tend to recover actions distributed around the demonstration manifold. However, when the robot encounters out-of-distribution states, blindly sampling $w$ from the prior may no longer produce the most desirable behaviour. This observation motivates the following idea: instead of drawing $w$ passively from the prior, learn a policy that actively selects the latent noise so that the frozen generative model produces better downstream actions.
+
+\subsection{The Latent-Action Markov Decision Process}
+
+To formalise this idea, the standard MDP is reformulated by replacing the physical action space with the latent noise space $\mathcal{W}$. For notational convenience, the frozen pretrained policy is written as $\pi_{0.5}(s, w)$, meaning that for state $s$ and latent noise $w \in \mathcal{W}$, the generated physical action is:
+\begin{equation}
+    a = \pi_{0.5}(s, w)
+\end{equation}
+
+This induces a latent-action MDP:
+\begin{equation}
+    \mathcal{M}_\mathcal{W} = (\mathcal{S}, \mathcal{W}, \mathcal{P}_\mathcal{W}, p_0, \mathcal{R}_\mathcal{W}, \gamma)
+\end{equation}
+where:
+\begin{itemize}
+    \item Action space: the original physical action space is replaced by the latent noise space $\mathcal{W}$.
+    \item Transition kernel: $\mathcal{P}_\mathcal{W}(\cdot \mid s, w) \coloneqq \mathcal{P}\!\left(\cdot \mid s,\, \pi_{0.5}(s, w)\right)$.
+    \item Reward function: $\mathcal{R}_\mathcal{W}(s, w) \coloneqq \mathcal{R}\!\left(s,\, \pi_{0.5}(s, w)\right)$.
+\end{itemize}
+
+Under this reformulation, the large pretrained model remains frozen and is absorbed into the environment dynamics. The RL problem is then to learn a lightweight latent-space policy $\pi_\mathcal{W}(w \mid s)$ that maximises the expected return:
+\begin{equation}
+    \pi^*_\mathcal{W} = \arg\max_{\pi_\mathcal{W}}\; \mathbb{E}\!\left[\sum_{t=0}^{T} \gamma^t\, \mathcal{R}_\mathcal{W}(s_t, w_t)\right], \quad w_t \sim \pi_\mathcal{W}(\cdot \mid s_t)
+    \label{eq:dsrl_objective}
+\end{equation}
+
+\subsection{Advantages of Latent-Space Reinforcement Learning Fine-Tuning}
+
+Optimising in the latent noise space rather than directly over the parameters of $\pi_{0.5}$ offers two practical advantages.
+
+\begin{enumerate}
+    \item Computational efficiency and training stability. RL updates are applied only to a lightweight latent-space actor, rather than backpropagated through the full multi-step generative model. This substantially reduces memory cost and avoids the instability associated with full-model online fine-tuning.
+    \item Black-box compatibility. The method only requires inference access to the pretrained model. The parameters and architecture of $\pi_{0.5}$ remain unchanged, which is important when the foundation model is large and expensive to retrain.
+\end{enumerate}
+
+This latent-space reformulation therefore provides a practical route for combining reinforcement learning with a frozen VLA policy in fine-grained manipulation tasks.
+
+\section{Trajectory Smoothing and Control}
+
+To reduce the latency of autoregressive decoding and maintain action coherence, VLA models commonly adopt action chunking~\cite{zhao2023aloha}: a single inference step produces a discrete sequence of future waypoints rather than a single action. However, this end-to-end generation paradigm focuses on the macroscopic accuracy of end-effector poses and does not explicitly account for the underlying kinematic constraints of the manipulator---such as velocity and acceleration limits. Feeding the raw discrete waypoints produced by the model directly to the low-level controller can readily induce high-frequency oscillations and abrupt joint-position jumps. In fine-grained manipulation tasks such as PCB grasping, such trajectory roughness can cause task failures and even damage robot hardware. Post-processing of the model's raw output through trajectory smoothing and control theory is therefore essential.
+
+\subsection{Exponential Moving Average Filtering}
+
+Exponential Moving Average (EMA) is a widely used algorithm for smoothing time-series data; in signal processing terms it acts as a low-pass filter. Within a single action chunk produced by the VLA model, adjacent action frames may exhibit high-frequency noise or small positional jumps arising from the stochastic nature of the generative process. EMA suppresses these high-frequency disturbances by computing a weighted average between the current observation and the historical smoothed value.
+
+Let $x_{raw}^{(t)}$ denote the raw joint position (or end-effector pose) predicted by the model at timestep $t$, and let $x_t$ denote the EMA-smoothed state. The recursive update is defined as:
+\begin{equation}
+    x_t = \alpha \cdot x_{raw}^{(t)} + (1 - \alpha) \cdot x_{t-1}
+    \label{eq:ema}
+\end{equation}
+where $\alpha \in (0, 1)$ is the smoothing coefficient (decay rate), representing the weight assigned to the current prediction. A smaller $\alpha$ produces stronger smoothing but introduces greater phase lag; a larger $\alpha$ makes the smoothed trajectory follow the raw prediction more closely. By appropriately tuning $\alpha$, EMA can reduce intra-chunk joint jumps without incurring significant latency.
+
+\subsection{Quadratic-Programming-Based Kinematic Constraint Enforcement}
+
+While EMA reduces intra-chunk fluctuation, it does not impose hard kinematic constraints on the manipulator. In real deployment, large deviations between consecutive waypoints may still lead to excessive acceleration or jerk. To address this issue, a quadratic-programming-based correction step is applied at each control cycle.
+
+Let the optimisation variable be the joint acceleration command $\ddot{q}_t$ at the current control step, and let $\ddot{q}_{t-1}$ denote the actual acceleration used at the previous step. To encourage smooth motion, the objective is set to minimise the change in acceleration between adjacent control cycles:
+\begin{equation}
+    \begin{aligned}
+        \min_{\ddot{q}_t}\; & \frac{1}{2} \left\| \ddot{q}_t - \ddot{q}_{t-1} \right\|^2 \\
+        \text{subject to}\; &
+        q_{\min} \leq q_t \leq q_{\max}, \\
+        & -\dot{q}_{\max} \leq \dot{q}_t \leq \dot{q}_{\max}, \\
+        & -\ddot{q}_{\mathrm{safe}} \leq \ddot{q}_t \leq \ddot{q}_{\mathrm{safe}}
+    \end{aligned}
+    \label{eq:qp}
+\end{equation}
+This formulation can be interpreted as minimising jerk in discrete time, because the change in acceleration between successive control cycles is directly related to the jerk magnitude. The constraint set enforces position, velocity, and safe acceleration bounds of the manipulator. Solving this QP at each step yields an acceleration command that remains dynamically feasible while suppressing abrupt motion changes.
+
+\subsection{Inter-Chunk Cubic Polynomial Transition}
+
+A second critical problem in action-chunk-based control is inter-chunk discontinuity. When the execution of one action chunk ends at its final waypoint $a_{old}$ and control switches to the first waypoint $a_{new}$ of a newly predicted chunk, the two chunks are generated independently and typically differ in both position and velocity. This discontinuity manifests as a visible stall or jerk at the transition point.
+
+To achieve a smooth transition between consecutive action chunks, a cubic polynomial is introduced to construct a bridging trajectory segment. Let the transition window be $\Delta t$, and define the normalised time variable as $\tau = \frac{t - t_0}{\Delta t} \in [0,1]$, where $t_0$ is the starting time of the transition. The cubic trajectory is written as:
+\begin{equation}
+    q(\tau) = c_0 + c_1 \tau + c_2 \tau^2 + c_3 \tau^3
+    \label{eq:cubic}
+\end{equation}
+According to the chain rule, the physical joint velocity satisfies
+\begin{equation}
+    \dot{q}(t) = \frac{dq}{d\tau} \cdot \frac{d\tau}{dt} = \frac{1}{\Delta t} q'(\tau)
+\end{equation}
+Therefore, to guarantee $C^1$ continuity at the start and end of the transition, the following boundary conditions must be satisfied:
+\begin{enumerate}
+    \item Start position: $q(0) = a_{old}$
+    \item End position: $q(1) = a_{new}$
+    \item Start velocity condition: $q'(0) = v_{old}\,\Delta t$
+    \item End velocity condition: $q'(1) = v_{new}\,\Delta t$
+\end{enumerate}
+These four conditions uniquely determine the coefficients $c_0, c_1, c_2, c_3$. By inserting such a transition segment between adjacent action chunks, the commanded trajectory preserves continuity in both position and velocity across chunk boundaries, thereby reducing visible pauses and jerks during execution.
 
 % =========================================================
-% CHAPTER 3: EXPERIMENTAL DESIGN
+% CHAPTER 3: VLA POLICY STEERING METHOD BASED ON LATENT SPACE RL AND MULTI-STAGE SMOOTHING
 % =========================================================
-\chapter{EXPERIMENTAL DESIGN}
+\chapter{VLA POLICY STEERING METHOD BASED ON LATENT SPACE RL AND MULTI-STAGE SMOOTHING}
 
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+Existing VLA models still face several practical limitations when deployed on industrial fine-grained manipulation tasks such as high-precision PCB pick-and-place, including limited action accuracy in out-of-distribution states, trajectory oscillation, inference latency, and weak robustness to corner cases. To address these issues, this chapter presents a VLA policy steering and real-time control enhancement framework for fine-grained manipulation. The framework keeps all pretrained model parameters fixed during online policy steering and improves task accuracy, execution continuity, and robustness through three complementary mechanisms: latent-noise-space policy optimisation, asynchronous inference with motion smoothing, and data-level anomaly recovery.
 
-\noindent The text should be typed in Times New Roman 12 with double spacing. 
+\section{System Overview}
+
+The system adopts $\pi_{0.5}$ as its visual perception and action generation backbone. Architecturally, the overall design is logically partitioned into three core layers: the Policy Generation Layer, the Real-Time Control and Smoothing Layer, and the Data and Corner-Case Handling Layer. The overall system architecture and data flow are illustrated in Figure~\ref{fig:system_overview}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/system_archive}
+    \caption{Overall system architecture and data flow of the proposed VLA policy steering and real-time control framework.}
+    \label{fig:system_overview}
+\end{figure}
+
+The framework is organised around three practical objectives of an automated manipulation system: action accuracy, real-time responsiveness, and operational stability. The principal functional modules within each layer are described below.
+
+(1) Policy Generation Layer: DSRL-Based Action Steering.
+Without retraining the billion-parameter $\pi_{0.5}$ backbone, the system treats the VLA model as part of the environment dynamics and performs reinforcement learning in its latent noise space. A lightweight Actor network is trained to predict the Gaussian noise input, thereby steering the frozen VLA model towards action chunks better suited to fine-grained manipulation. To improve convergence on long-horizon tasks, this layer introduces a subtask-decomposition-based dense reward mechanism. By evaluating the manipulator's behaviour at each sub-stage---approach, grasp, transport, and placement---and assigning chunk-level feedback, the mechanism provides denser supervision for policy optimisation.
+
+(2) Real-Time Control and Smoothing Layer: Asynchronous Architecture and Multi-Stage Post-Processing.
+A single forward inference pass through the VLA model typically takes tens to hundreds of milliseconds, well beyond the 50\,Hz control cycle required by physical robots. Moreover, the discrete action chunks produced end-to-end by the model lack explicit kinematic constraints. This layer addresses both issues through deep system-engineering optimisation.
+\begin{itemize}
+    \item Temporal scheduling: a master-worker asynchronous inference architecture is designed in which the master process runs at high frequency and is solely responsible for environment state acquisition and low-level robot control, while a dedicated worker process handles the time-consuming model inference. Decoupled via a shared state queue, the system overlaps chunk execution with model computation and thereby reduces blocking latency at the control layer.
+    \item Trajectory post-processing: a three-stage action smoothing pipeline is constructed: \emph{EMA denoising} $\rightarrow$ \emph{QP kinematic constraint enforcement} $\rightarrow$ \emph{cubic inter-chunk transition}. Exponential Moving Average (EMA) first suppresses high-frequency oscillations from the model predictions; Quadratic Programming (QP) then bounds unsafe acceleration transients; finally, cubic interpolation bridges consecutive independently generated action chunks and improves continuity across chunk boundaries.
+\end{itemize}
+
+(3) Data and Corner-Case Handling Layer: Anomaly Recovery and Correction.
+In complex physical environments, out-of-distribution states are unavoidable---for example, a tray absent from the expected position, a fully occupied tray, or a robot arm that has drifted off course due to external disturbance. Pure imitation learning trained only on successful demonstrations is prone to compounding errors in such scenarios. This framework therefore introduces a Recovery-and-Correction data augmentation mechanism~\cite{ke2025rac,chen2024intervengen}. By deliberately collecting and annotating robot trajectories that recover from anomalous boundary states---first returning the arm to a safe nominal distribution (Recovery phase) and then re-executing the correct action sequence (Correction phase)---the VLA backbone is exposed to both nominal behaviours and safe recovery behaviours during supervised fine-tuning, which improves robustness under corner cases.
+
+The following sections present the mathematical principles and implementation details of each module in the order introduced above.
+
+\section{Improved DSRL with Dense Reward}
+
+As discussed in the preceding sections, applying online reinforcement-learning fine-tuning directly to a large-scale VLA model in an industrial fine-grained manipulation setting entails prohibitive computational cost and strong gradient instability. To enable policy self-improvement under limited compute, this work adopts latent-space Diffusion Steering via Reinforcement Learning (DSRL) as the core steering algorithm, and introduces a Human-in-the-Loop dense reward mechanism with retrospective scoring, specifically designed for the long-horizon characteristics of fine-grained manipulation tasks.
+
+\subsection{Construction of the Latent-Action MDP}
+
+In the proposed system, the pretrained $\pi_{0.5}$ model is treated as a frozen action generator. The RL action space is therefore shifted from the low-level physical control space to the initial latent noise space $\mathcal{W}$ of the flow-matching module. Following the formulation introduced in Chapter~2, the latent-action MDP is written as
+\begin{equation}
+    \mathcal{M}_\mathcal{W} = (\mathcal{S}, \mathcal{W}, \mathcal{P}_\mathcal{W}, p_0, \mathcal{R}_\mathcal{W}, \gamma)
+\end{equation}
+At each timestep $t$, rather than modifying any parameter of $\pi_{0.5}$, a lightweight latent-space Actor network $\pi_\mathcal{W}(w_t \mid s_t)$ is trained. Given the current state $s_t$, the Actor outputs a steering noise $w_t$, which is fed into the frozen $\pi_{0.5}$; multi-step denoising integration then produces the physical action chunk:
+\begin{equation}
+    a_{t:t+H} = \pi_{0.5}(s_t,\, w_t)
+    \label{eq:dsrl_action}
+\end{equation}
+Accordingly, the latent transition kernel and latent reward function are defined as
+\begin{equation}
+    \mathcal{P}_\mathcal{W}(\cdot \mid s_t, w_t) \coloneqq \mathcal{P}\!\left(\cdot \mid s_t,\, \pi_{0.5}(s_t, w_t)\right)
+\end{equation}
+\begin{equation}
+    \mathcal{R}_\mathcal{W}(s_t, w_t) \coloneqq \mathcal{R}\!\left(s_t,\, \pi_{0.5}(s_t, w_t)\right)
+\end{equation}
+
+To accelerate convergence of the latent-space policy, the input state $s_t$ to both the Actor and Critic networks is not the raw high-dimensional image pixels but rather a concatenation of two components: (i) deep semantic feature vectors (visual embeddings) extracted from $\pi_{0.5}$'s frozen Vision Encoder, and (ii) the low-dimensional proprioceptive state of the manipulator (joint angles and end-effector pose). This design substantially reduces the parameter count of the Actor-Critic networks while leveraging the powerful multimodal representations already learned by the foundation model, allowing the networks to focus exclusively on the noise-selection task.
+
+\subsection{Limitations of Sparse Reward in Long-Horizon Tasks}
+
+The core experimental task in this thesis is six consecutive PCB grasping and tray-placement cycles. In each cycle, the manipulator must first precisely grasp an extremely thin PCB from a moving assembly line and then transport and seat it into a tray slot under millimetre-level tolerance constraints. Six consecutive cycles constitute an exceptionally long-horizon control problem.
+
+In the standard RL paradigm a sparse reward is typically employed: positive feedback is provided only when all six cycles are completed successfully. However, because the VLA model's initial exploration is stochastic, the probability of achieving a complete success sequence by chance during random exploration is vanishingly small. This leads to near-zero value-function gradients for extended periods---the manipulator wanders aimlessly in mid-air, particularly at the transition between consecutive place-and-retrieve phases---making convergence to the optimal policy practically infeasible.
+
+\subsection{Improved Dense Reward: Subtask Decomposition and Historical-Buffer Backtracking}
+
+To resolve the credit-assignment dilemma inherent in long-horizon tasks, this thesis proposes a Human-in-the-Loop dense reward mechanism that decomposes a long-horizon trajectory into chunk-level subtask evaluations.
+
+\paragraph{Subtask decomposition and three-tier scoring.}
+The six-cycle pick-and-place task is decomposed into 12 scoring checkpoints, with ``successful grasp'' and ``successful placement'' in each cycle treated as independent subtask nodes. During online data collection, a human evaluator stands beside the robot and scores each completed grasping or placement subtask at the \emph{action-chunk level}, because the RL policy outputs one latent-noise action per VLA query and each query corresponds to one action chunk. The scoring rule is three-tiered:
+
+\begin{itemize}
+    \item Perfect ($+1$): the subtask is completed cleanly, for example with accurate centring and no obvious collision or excessive contact.
+    \item Success ($0$): the subtask is completed, but the execution quality is marginal, for example with slight contact or offset that does not cause task failure.
+    \item Failure ($-1$): the subtask fails or a collision occurs.
+\end{itemize}
+In this thesis, all online scores were provided by a single evaluator in order to keep the scoring criterion consistent throughout data collection.
+
+\paragraph{Historical-buffer backtracking assignment.}
+A key engineering challenge in human-in-the-loop operation is the inherent reaction delay between the human observer and the moment the scoring key is pressed. Moreover, a ``successful grasp'' is the cumulative result of several preceding approach and pre-grasp planning actions; assigning a high score solely to the action occurring at the instant of the button press would cause severe credit-assignment errors---rewarding post-grasp holding actions while neglecting the critical pre-grasp approach.
+
+To address this, a historical-buffer backtracking mechanism is designed. Let the human evaluator issue a chunk-level score $\hat{r}_i \in \{+1, 0, -1\}$ at chunk index $i$. Rather than assigning that score only to the current chunk, the system propagates it backward to the most recent $N$ chunks:
+\begin{equation}
+    r_k = \hat{r}_i, \quad \forall\, k \in [\max(0, i-N),\; i]
+    \label{eq:backtrack_reward}
+\end{equation}
+In the experiments of this thesis, the manipulator executes low-level control at 50\,Hz and each VLA query produces an action chunk of 25 actions, so one chunk spans 0.5\,s. The backtracking window is set to $N=3$, meaning the reward is assigned to the current chunk and the 3 preceding chunks. This forms a total critical window of 2.0\,s. This choice is intended to cover both the evaluator's reaction delay and the short sequence of approach actions strongly correlated with the eventual grasping or placement outcome.
+
+For chunks that do not receive an explicit human score, the trajectory-level result is used as a fallback. Let $z \in \{0,1\}$ denote the episode outcome, where $z=1$ indicates overall success and $z=0$ indicates failure. The final chunk reward is assembled as
+\begin{equation}
+    r_i =
+    \begin{cases}
+        \hat{r}_i, & \text{if chunk } i \text{ has an explicit or backtracked human score},\\
+        0, & \text{if chunk } i \text{ has no explicit score and } z=1,\\
+        -1, & \text{if chunk } i \text{ has no explicit score and } z=0.
+    \end{cases}
+\end{equation}
+The resulting chunk-level reward sequence is written into the replay buffer for SAC updates. Since one RL action corresponds to one VLA query, the transition discount is applied at the chunk timescale, namely $\gamma^{\mathrm{query\_freq}}$, while the terminal mask follows the standard episode termination logic. The mechanism is illustrated in Figure~\ref{fig:reward_buffer}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/reward_buffer_update}
+    \caption{Illustration of the Human-in-the-Loop subtask scoring and historical-buffer backtracking mechanism. The backtracking assignment resolves human scoring delay and ensures that the preceding ``planning'' action chunks that determine a successful grasp receive correct reward credit.}
+    \label{fig:reward_buffer}
+\end{figure}
+
+Combined with the DSRL framework, this dense reward design provides the Critic network with more frequent and more targeted supervision signals throughout the six-cycle long-horizon task, which helps improve convergence relative to sparse-reward training.
+
+\section{Asynchronous Inference Architecture}
+
+In fine-grained manipulation tasks on industrial assembly lines---such as PCB grasping---the responsiveness of the manipulator to a dynamic physical environment is critical. Control systems are typically required to operate at 50\,Hz (i.e., one control cycle every 20\,ms) or faster. This requirement stands in irreconcilable conflict with the inference latency of large-scale embodied intelligence models. This section details the asynchronous real-time inference architecture designed in this work.
+
+\subsection{Latency Bottleneck of High-Frequency Control}
+
+Taking the $\pi_{0.5}$ model adopted in this thesis as a representative example, its architecture comprises a Vision-Language Model (VLM) backbone with billions of parameters and a dedicated Action Expert network with approximately 300 million parameters. During a standard inference pass, the model must encode images from multiple camera viewpoints and then perform 10-step Euler integration to complete the flow-matching denoising process and produce a continuous action chunk.
+
+On a standard workstation platform (e.g., an industrial PC equipped with an NVIDIA RTX~4090 GPU and an Intel Core i9 CPU), this complex generative multi-step inference process typically takes on the order of several hundred milliseconds per call. If a conventional \emph{synchronous blocking} control architecture is adopted---i.e., read state $\rightarrow$ wait for model inference $\rightarrow$ actuate motors---the effective control frequency of the manipulator may drop to single digits (e.g., $<$5\,Hz). Such delay and command stuttering make it difficult to satisfy the dynamic stability requirements of fine-grained grasping and placement.
+
+\subsection{Master-Worker Asynchronous Inference Architecture}
+
+To decouple high-frequency hardware control from low-frequency model inference, this work designs a master-worker asynchronous inference architecture at the system software level. The architecture exploits the operating-system multiprocessing mechanism and implements inter-process communication via shared memory and thread-safe bidirectional state/action queues. The system is divided into two concurrently running core processes.
+
+\begin{itemize}
+    \item Master Process (high-frequency real-time control).
+    The master process is the ``executor'' that interfaces directly with the physical world, running in a strict 50\,Hz loop. Its responsibilities are threefold: (1)~\textit{Sensor polling}---reading the latest image streams from all camera viewpoints and the current joint angles and end-effector pose from the Piper manipulator at high frequency; (2)~\textit{State dispatch}---packaging the latest observations and pushing them non-blocking into the state queue; (3)~\textit{Command dispatch}---retrieving the latest action chunk from the action queue and forwarding the joint commands to the robot motors. If the action queue is momentarily empty, the master process draws on buffered actions from the previous chunk to maintain smooth robot motion; under no circumstances does it block to wait for the inference process.
+
+    \item Inference Process (low-frequency algorithmic computation).
+    The inference process is the system's ``brain'', running in the background at the maximum speed permitted by the available compute. Its sole responsibility is to retrieve the most recent environment observation $s_t$ from the state queue, pass it sequentially through the DSRL Actor network to compute the optimal latent noise $w_t$, and then invoke $\pi_{0.5}$'s Action Expert for multi-step denoising to produce the future action chunk $a_{t:t+H}$. Upon completion, the chunk is immediately pushed to the action queue for the master process to consume.
+\end{itemize}
+
+\subsection{Temporal Masking via Action Chunking}
+
+The key to the successful operation of this architecture lies in the deep integration of the $\pi_{0.5}$ model's Action Chunking mechanism with the classical Pipeline paradigm from computer science. In end-to-end control, a single VLA inference pass does not output a single next-step action but generates a continuous action sequence spanning a future time horizon $H$ (e.g., 60 future joint-trajectory waypoints constituting one action chunk).
+
+In the dual-track asynchronous architecture designed here, while the master process physically executes Chunk~$k$ at 50\,Hz, the inference process concurrently acquires the current environment state $s_t$ and launches the asynchronous pre-computation of Chunk~$k+1$ in the background. Under this scheme, the large model's time-consuming forward inference is physically isolated and strictly ``wrapped inside'' the execution time window of the current chunk.
+
+From a timing-logic perspective, as long as the system satisfies the condition that the total computation time of the inference process is shorter than the execution time of a single chunk by the master process, namely $T_{\mathrm{inference}} < T_{\mathrm{chunk\_execution}}$, most of the model computation can be overlapped with the execution of the current chunk. In this case, the chunk duration acts as a latency-absorption window, so the blocking delay perceived by the control loop is substantially reduced. This engineering idea is consistent with recent chunk-based VLA deployments: action chunks provide a temporal buffer within which model inference and physical execution can proceed in parallel. In practice, this design helps maintain continuous control at chunk boundaries, although short queue jitter and observation delays may still occur. The mechanism is illustrated in Figure~\ref{fig:async_infer}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/async_infer_simple_edit}
+    \caption{Asynchronous inference architecture and temporal masking via action chunking. While the master process executes Chunk~$k$ at 50\,Hz, the inference process pre-computes Chunk~$k+1$ in parallel, overlapping model computation with the chunk execution window and reducing blocking delay at chunk boundaries.}
+    \label{fig:async_infer}
+\end{figure}
+
+\section{Multi-Stage Trajectory Smoothing}
+
+Under the master-worker asynchronous architecture, much of the inference latency of the large model can be hidden behind chunk execution, which improves action-chunk delivery continuity. However, directly forwarding VLA-predicted action chunks to the low-level motor controllers still poses severe stability challenges at the physical execution layer. This section analyses the root causes of trajectory oscillation when a VLA model directly controls a manipulator, and proposes a multi-stage action smoothing pipeline comprising intra-chunk denoising and constraint enforcement, and inter-chunk continuous transition.
+
+\subsection{Inherent Oscillation Challenges in VLA Action Generation}
+
+Contemporary VLA models such as $\pi_{0.5}$ are designed to prioritise generalisation across open-world scenarios and semantic reasoning for long-horizon tasks. On the action generation side, these models typically produce high-dimensional absolute position targets---such as joint angles or end-effector poses---in an end-to-end fashion. This generative paradigm has an inherent physical weakness: the model lacks any explicit awareness of or constraint on the underlying kinematics and dynamics of the manipulator (e.g., velocity and acceleration limits).
+
+When executing fine-grained tasks such as PCB grasping and tray placement, where the target object is extremely thin and tray slot tolerances are on the order of millimetres, even minor command deviations can be amplified by the rigid structure of the manipulator. Specifically, two classes of trajectory defect arise from raw VLA outputs: (1) high-frequency position jumps between adjacent action frames caused by the stochastic nature of the generative model; and (2) acceleration spikes arising from the absence of kinematic constraints along localised trajectory segments. At the physical level, both defects manifest as oscillation and tremor, increasing the risk of PCB drops or collisions with the assembly line.
+
+\subsection{Intra-Chunk Smoothing: EMA Filtering and QP Kinematic Constraints}
+
+To suppress the dangerous oscillation signals within a single action chunk, this section designs an intra-chunk smoothing module consisting of a cascaded Exponential Moving Average (EMA) filter and a Quadratic Programming (QP) solver.
+
+\paragraph{EMA low-pass filtering for position jumps.}
+Let $x_{raw}^{(t)}$ denote the raw joint command generated by the model at timestep $t$ and $x_{t-1}$ the previous smoothed state maintained by the system. The actual command $x_t$ issued to the motors is computed as:
+\begin{equation}
+    x_t = \alpha \cdot x_{raw}^{(t)} + (1-\alpha) \cdot x_{t-1}
+    \label{eq:ema_intra}
+\end{equation}
+By appropriately tuning the smoothing coefficient $\alpha$, the system effectively ``clips'' the high-frequency spikes in the command trajectory, yielding a smooth position command curve.
+
+\paragraph{QP-based kinematic constraint enforcement.}
+EMA alone cannot guarantee kinematic feasibility in extreme cases. Immediately following EMA post-processing, the system therefore applies a QP-based correction step. Let the optimisation variable be the joint acceleration command $\ddot{q}_t$ at the current control cycle, and let $\ddot{q}_{t-1}$ denote the acceleration used in the previous cycle. To encourage smooth motion, the objective is set to minimise the change in acceleration between adjacent control cycles:
+\begin{equation}
+    \min_{\ddot{q}_t}\; \frac{1}{2}\left\|\ddot{q}_t - \ddot{q}_{t-1}\right\|^2
+    \label{eq:qp_intra}
+\end{equation}
+Let $\Delta t_c$ denote the low-level control period. Under a first-order discrete-time approximation, the current velocity and position satisfy
+\begin{equation}
+    \dot{q}_t = \dot{q}_{t-1} + \Delta t_c\, \ddot{q}_t
+\end{equation}
+\begin{equation}
+    q_t = q_{t-1} + \Delta t_c\, \dot{q}_{t-1} + \frac{1}{2}\Delta t_c^2\, \ddot{q}_t
+\end{equation}
+The QP constraints are then written as
+\begin{equation*}
+    \text{subject to}\quad q_{\min} \leq q_t \leq q_{\max},\quad
+    -\dot{q}_{\max} \leq \dot{q}_t \leq \dot{q}_{\max},\quad
+    -\ddot{q}_{\mathrm{safe}} \leq \ddot{q}_t \leq \ddot{q}_{\mathrm{safe}}
+\end{equation*}
+A strict acceleration safety bound $\ddot{q}_{\mathrm{safe}}$ is enforced. This formulation can be interpreted as minimising discrete-time jerk, because the change in acceleration between successive control cycles is directly related to jerk magnitude. By solving this QP at each control step, the system suppresses abrupt motion changes while keeping the commanded trajectory within position, velocity, and acceleration limits.
+
+\subsection{Inter-Chunk Transition: Cubic Spline Smoothing}
+
+Having resolved the intra-chunk oscillation problem, the asynchronous inference architecture introduces a further challenge: spatial discontinuity at chunk boundaries. In the asynchronous pipeline described in Section~3.3, Chunk~$k$ and Chunk~$k+1$ are generated independently by the large model at different instants. Consequently, when the master process completes the final step of Chunk~$k$ (at position $a_{old}$ with velocity $v_{old}$) and switches to the first step of Chunk~$k+1$ (at position $a_{new}$ with model-predicted initial velocity $v_{new}$), a positional and velocity gap naturally exists between the two chunks. A direct switch at this boundary produces a violent mechanical jerk and reverse-direction impact.
+
+To bridge this discontinuity, a cubic transition is inserted at every chunk boundary. When a new chunk is dispatched, the master process does not immediately execute $a_{new}$; instead, it inserts a short transition window of duration $\Delta t_{tr}$ (e.g., 0.1\,s) between $a_{old}$ and $a_{new}$. Define the normalised time variable as $\tau = \frac{t-t_0}{\Delta t_{tr}} \in [0,1]$, where $t_0$ is the starting time of the transition. Within this window, the system constructs a cubic polynomial trajectory:
+\begin{equation}
+    q(\tau) = c_0 + c_1\tau + c_2\tau^2 + c_3\tau^3
+    \label{eq:cubic_intra}
+\end{equation}
+According to the chain rule, the physical joint velocity satisfies
+\begin{equation}
+    \dot{q}(t) = \frac{dq}{d\tau}\cdot\frac{d\tau}{dt} = \frac{1}{\Delta t_{tr}}q'(\tau)
+\end{equation}
+The four coefficients are determined by the following boundary conditions:
+\begin{enumerate}
+    \item $q(0) = a_{old}$ \quad (start at the terminal position of the previous chunk)
+    \item $q(1) = a_{new}$ \quad (arrive at the initial position of the new chunk)
+    \item $q'(0) = v_{old}\,\Delta t_{tr}$ \quad (match the terminal velocity of the previous chunk)
+    \item $q'(1) = v_{new}\,\Delta t_{tr}$ \quad (match the initial velocity of the new chunk)
+\end{enumerate}
+These four conditions uniquely determine the polynomial coefficients $c_0, c_1, c_2, c_3$, constructing a $C^1$-continuous (velocity-continuous) bridge between the two independently generated action chunks.
+
+In summary, after passing through the complete multi-stage post-processing pipeline---EMA denoising $\rightarrow$ QP acceleration regularisation $\rightarrow$ cubic inter-chunk transition---the raw VLA action predictions are converted into a smoother physical control stream for narrow-clearance PCB grasping with the Piper manipulator.
+
+\section{Corner Case Handling}
+
+The DSRL policy steering and multi-stage smoothing pipeline described in the preceding sections endow the system with high-precision, smooth PCB pick-and-place performance under nominal operating conditions. However, real industrial environments are rife with dynamic uncertainty. Policies trained exclusively on success-only expert demonstrations readily fail when confronted with unseen corner cases. This section analyses the root causes of such failures from a data-distribution perspective and proposes an active data augmentation mechanism based on Recovery and Correction (RaC)~\cite{ke2025rac,sinha2024racer} to improve system robustness.
+
+\subsection{Compounding Errors and Typical Failure Scenarios}
+
+Contemporary VLA models primarily rely on Behavioural Cloning (BC)~\cite{ross2011dagger}. In long-horizon tasks, small action errors accumulate at each timestep, eventually driving the manipulator into Out-of-Distribution (OOD) states that never appeared in the training dataset. Once in an OOD state, the model tends to produce unpredictable, divergent actions---a phenomenon known as compounding errors~\cite{ross2011dagger}.
+
+In the continuous PCB pick-and-place pipeline of this thesis, two principal categories of corner case are encountered.
+
+\begin{enumerate}
+    \item Environmental anomaly (static failure): scenarios such as ``material present on the conveyor but tray absent'' or ``all tray slots already occupied''. The correct behaviour is for the manipulator to remain stationary and wait; however, the raw $\pi_{0.5}$ model hallucinates and continues to execute pick-and-place motions, causing the arm to strike the table surface or forcibly insert a PCB into an already-full tray slot.
+    \item State deviation (dynamic failure): the manipulator drifts off course due to external disturbance during motion---for example, it ends up at a non-grasping position in front of the conveyor, or at a non-placement position above the tray. The raw model cannot recognise its own erroneous pose and closes the gripper regardless, resulting in severe physical collisions.
+\end{enumerate}
+
+\subsection{State Distribution Funnel and Recovery-and-Correction Theory}
+
+A naive correction strategy for the state-deviation failure is to collect a single correction trajectory that transitions directly from the erroneous OOD state to task success. This approach, however, places extreme demands on the operator during data collection, and the model cannot generalise such a complex ``from-error-to-success'' skill from few examples.
+
+This work introduces the theoretical perspective of Recovery and Correction (RaC)~\cite{ke2025rac}. In multi-stage sequential tasks, the state-space distribution of the data exhibits a characteristic funnel shape: at the early stages of the task (Stage~1, e.g., ``approaching the object''), the set of valid states is broad; as the task progresses to higher-precision stages (Stage~2/3, e.g., ``precision grasping'' or ``slot alignment''), the required pose tolerance narrows sharply and the valid distribution contracts. The state distribution funnel is illustrated in Figure~\ref{fig:rac}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{figures/RAC_edit1}
+    \caption{State distribution funnel and the Recovery-and-Correction data augmentation pipeline. When the manipulator deviates into an OOD state at a high-precision stage, the optimal strategy is to first recover to the broad, well-covered initial distribution (Stage~1), and then reattempt the downstream subtask.}
+    \label{fig:rac}
+\end{figure}
+
+Grounded in this funnel-distribution property, the most rational response when the manipulator deviates into an OOD state is not to attempt direct task completion, but rather to first recover to the broad and safe initial stage (Stage~1), and then reattempt the subsequent subtasks from a known-good state. Because the initial-stage distribution is already densely covered by expert demonstrations, the probability of a successful retry is far higher than forcing execution from an unfamiliar error state.
+
+\subsection{Active Data Augmentation Strategy for Corner Cases}
+
+Based on the above theory, this work designs an active corner-case handling mechanism at the data level. By deliberately collecting specific intervention trajectories and incorporating them into the supervised fine-tuning dataset of the VLA backbone, the system is trained to better handle out-of-distribution states.
+
+\paragraph{Static suppression for environmental anomalies (empty tray / full tray).}
+The visual scenes of ``no tray present'' and ``all slots occupied'' are artificially constructed. Under each such scene, continuous zero-action data is collected---i.e., the manipulator remains stationary at a safe initial pose with all action commands set to zero. Incorporating these negative-constraint samples into the supervised fine-tuning dataset teaches the VLA model to suppress unnecessary actions when the target condition is not met.
+
+\paragraph{Active Recovery-and-Correction collection for state deviation.}
+To teach the model to self-recover after drifting, a deliberate four-phase data collection pipeline is designed:
+
+\begin{center}
+    Stage~1 (\emph{correct}) $\;\rightarrow\;$ Stage~2 (\emph{induced deviation}) $\;\rightarrow\;$ \emph{Recovery} to Stage~1 $\;\rightarrow\;$ Stage~2 (\emph{correct reattempt})
+\end{center}
+
+Concretely, during the demonstration the operator intentionally guides the manipulator to an off-axis position---such as a non-grasping location in front of the conveyor or a non-placement position above the tray---thereby manufacturing an OOD state. The operator then assumes control and drives the arm safely backward to the standard pre-grasp or pre-placement pose (\emph{Recovery phase}). Finally, the correct grasp or placement action is executed to complete the current subtask (\emph{Correction phase}).
+
+These paired Recovery-and-Correction trajectories are merged into the supervised fine-tuning dataset of the base VLA model. As a result, the model is exposed not only to standard nominal trajectories but also to recovery behaviours for out-of-distribution states during full-parameter fine-tuning. This data augmentation strategy incurs limited collection overhead yet materially improves the system's ability to backtrack and retry when positional deviation occurs.
+
 
 % =========================================================
-% CHAPTER 4: RESULT AND DISCUSSION
+% CHAPTER 4: EXPERIMENTAL PLATFORM AND TASK CONFIGURATION
 % =========================================================
-\chapter{RESULT AND DISCUSSION}
+\chapter{EXPERIMENTAL PLATFORM AND TASK CONFIGURATION}
 
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+\section{Hardware System}
+
+This section presents the software and hardware experimental platform used to validate the algorithms proposed in this thesis. A complete physical experimental environment---comprising a single-arm manipulator, a multi-view visual sensing system, and a computing workstation---was constructed for the execution of PCB grasping and tray-placement tasks.
+
+\subsection{Robot Body and Actuator}
+
+The real-robot experiments were conducted on a Piper single-arm manipulator, which can be regarded as an ALOHA-style commercial platform in terms of hardware form factor and control usage. A standard parallel-jaw gripper is mounted at the end-effector to perform material grasping. On the hardware interface side, the Piper SDK returns the robot's proprioceptive state in real time. The state vector comprises 7 dimensions: 6 dimensions for the real-time joint angles of the robot arm and 1 dimension for the gripper jaw opening. These low-dimensional proprioceptive states, combined with multi-view visual features, jointly constitute the state input to the model.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/piper}
+        \caption{Piper single-arm manipulator with parallel-jaw gripper.}
+        \label{fig:piper}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/gemini335}
+        \caption{Orbbec Gemini 335 depth camera.}
+        \label{fig:gemini335}
+    \end{subfigure}
+    \caption{Hardware components of the experimental platform. (Left) The Piper single-arm manipulator used as the physical execution carrier. (Right) The Orbbec Gemini 335 RGB-D camera deployed for multi-view visual sensing.}
+    \label{fig:hardware_components}
+\end{figure}
+
+\subsection{Multi-View Vision Perception System}
+
+Visual observation is a critical input for end-to-end VLA models to understand spatial geometric relationships. Four Orbbec Gemini 335 RGB-D cameras are deployed in this experiment to provide multi-viewpoint image data. In this work, however, only the RGB stream is used as model input; the raw image resolution is $480 \times 640$. Their specific layout is as follows:
+
+\begin{enumerate}
+    \item Global camera: mounted in a top-down bird's-eye configuration with a wide field of view, responsible for capturing the macroscopic layout of the entire workspace (including the manipulator, the conveyor, and the tray).
+    \item Conveyor camera: aimed at the PCB grasping zone on the conveyor belt, providing localised visual features of that region.
+    \item Tray camera: aimed at the target tray placement area, assisting the model in recognising the edges of individual tray slots.
+    \item Wrist camera: mounted on the flange of the Piper end-effector; it moves with the manipulator and provides first-person-perspective image observations.
+\end{enumerate}
+
+Figure~\ref{fig:camera_views} presents representative images captured by all four cameras during an ongoing PCB pick-and-place trial, illustrating the visual information available to the model at each viewpoint.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \vspace{0pt}
+        \centering
+        \includegraphics[width=\textwidth]{figures/global_camera_vision}
+        \caption{Global camera view. Wide-angle top-down overview of the entire workspace. The conveyor belt (top-left), tray (bottom-right), and manipulator are all visible, enabling coarse spatial reasoning.}
+        \label{fig:cam_global}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \vspace{0pt}
+        \centering
+        \includegraphics[width=\textwidth]{figures/conveyor_camera_vision}
+        \caption{Conveyor camera view. Close-up of the PCB grasping zone. The 5\,cm circular PCB must be grasped from a storage slot with $\leq$3\,mm lateral clearance, requiring accurate alignment under narrow-clearance conditions.}
+        \label{fig:cam_conveyor}
+    \end{subfigure}
+    \vspace{0.5em}
+    \begin{subfigure}[t]{0.48\textwidth}
+        \vspace{0pt}
+        \centering
+        \includegraphics[width=\textwidth]{figures/tray_camera_vision}
+        \caption{Tray camera view. Top-down view of the placement tray. Each tray slot accommodates a 5\,cm PCB with $\leq$3\,mm clearance on all sides, making precise final-approach control critical to collision-free seating.}
+        \label{fig:cam_tray}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \vspace{0pt}
+        \centering
+        \includegraphics[width=\textwidth]{figures/wrist_camera_vision}
+        \caption{Wrist camera view. First-person egocentric perspective co-moving with the end-effector. Provides high-resolution local geometry for fine alignment during both grasping and placement.}
+        \label{fig:cam_wrist}
+    \end{subfigure}
+    \caption{Representative camera views from the four-camera perception system during a PCB pick-and-place trial. Together, these multi-viewpoint observations provide the VLA model with sufficient spatial context for narrow-clearance manipulation.}
+    \label{fig:camera_views}
+\end{figure}
+
+\subsection{Workspace and Task Materials}
+
+The target object in this experiment is a circular PCB board with a diameter of 5\,cm. In the task setup, the physical clearance between the PCB board and its storage slot on the conveyor, as well as between the board and its target slot in the placement tray, is constrained to within 3\,mm. This narrow-clearance assembly condition demands high positional precision and trajectory smoothness from the manipulator during grasping and placement, in order to prevent collisions between the gripper and the surrounding structures.
+
+\subsection{Computational Platform and Workstation}
+
+All system control and model inference processes run on a single local workstation. The specific hardware configuration is as follows:
+
+\begin{itemize}
+    \item Processor (CPU): Intel Core i9-12900
+    \item Graphics Processing Unit (GPU): NVIDIA GeForce RTX 4090 (24\,GB VRAM)
+    \item System Memory (RAM): 128\,GB
+\end{itemize}
+
+This computing platform is responsible for processing the multi-view camera image streams, running the asynchronous inference of the $\pi_{0.5}$ model and the DSRL policy network, and maintaining the master-process low-level hardware communication and control loop at 50\,Hz.
+
+\section{Software and Simulation Environment}
+
+To validate algorithm effectiveness under safe and controllable conditions and to ensure efficient real-robot deployment, a dual-track experimental software environment---\emph{simulation pre-validation} followed by \emph{real-robot deployment}---is constructed in this thesis. This section describes the simulation platform used for algorithmic validation and the software communication architecture used for physical robot deployment.
+
+\subsection{Simulation Platform and Preliminary Validation}
+
+Before deploying the policy to the physical platform, this thesis first uses a standard MuJoCo benchmark task to perform a preliminary validation of the DSRL noise-steering strategy. The purpose of this simulation study is not to reproduce the full PCB task, but to verify in a controlled setting that latent-noise-space steering can improve the precision of a VLA-style policy before real-robot deployment.
+
+\begin{itemize}
+    \item Simulation task definition.
+    The classic \texttt{aloha\_transfer\_cube} bimanual cube-handover task is adopted as the benchmark. The system must control both arms to perform cooperative manipulation: the right arm first grasps a small target cube from the table, moves it to a designated handover point in space, and the left arm then aligns and closes its gripper to take custody of the cube. A trial is considered successful only when the left arm securely grips the cube without dropping it. Although this benchmark differs from the real PCB task in robot embodiment and task semantics, it is sensitive to relative end-effector pose error and is therefore suitable as a preliminary sanity check for the DSRL steering mechanism.
+
+    \item Simulation result comparison.
+    In the simulation study, the success rates of the raw $\pi_0$~\cite{black2024pi0} model and the proposed $\pi_0 + \mathrm{DSRL}$~\cite{wang2025dsrl} strategy are compared after training for 1 million environment steps. In repeated evaluation rollouts, the raw $\pi_0$ model achieves a task success rate of 80\%, with the majority of failures attributed to end-effector positional deviation at the moment of bimanual handover. After introducing DSRL to search for the latent-space noise, the task success rate increases to 95\%. Since this simulation experiment serves only as a preliminary algorithmic validation, detailed rollout statistics are not expanded further here. Nevertheless, the result suggests that latent-space steering can correct fine-grained action deviations without modifying foundation-model parameters, which motivates the subsequent real-robot study.
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.52\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/transfer_cube}
+        \caption{MuJoCo simulation environment for the \texttt{aloha\_transfer\_cube} bimanual cube-handover benchmark task.}
+        \label{fig:transfer_cube_env}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.44\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/transfer_cube_success_rate}
+        \caption{Success-rate comparison between the raw $\pi_0$ model (80\%) and $\pi_0 + \mathrm{DSRL}$ (95\%) on the bimanual handover task.}
+        \label{fig:transfer_cube_rate}
+    \end{subfigure}
+    \caption{Simulation pre-validation results on the \texttt{aloha\_transfer\_cube} benchmark. DSRL raises the bimanual cube-handover success rate from 80\% to 95\%, providing a preliminary validation of the latent-noise steering strategy before real-robot deployment.}
+    \label{fig:transfer_cube}
+\end{figure}
+
+\subsection{Real-Robot Software Environment and Communication Architecture}
+
+In the real-robot deployment phase, a distributed software system is designed to satisfy the demanding and concurrent requirements of high-frequency multi-view image acquisition, asynchronous large-model inference, and high-frequency low-level motor control.
+
+\begin{itemize}
+    \item Operating system and middleware.
+    The system runs on Ubuntu 22.04 and uses ROS2 Humble (Robot Operating System 2) as the core message-passing middleware. The decentralised DDS (Data Distribution Service) architecture of ROS2 is used to support transmission of high-resolution image streams from all four cameras as well as high-frequency proprioceptive state feedback from the manipulator.
+
+    \item Development environment and concurrency control.
+    The algorithms are implemented in Python 3.10. To address the inference latency of the $\pi_{0.5}$ model, the system makes deep use of Python's \texttt{multiprocessing} library. Through shared memory and thread-safe queues, the system faithfully implements the master-worker architecture described in Section~3.3: the master process runs the 50\,Hz real-time control loop while a dedicated worker process handles background model inference asynchronously.
+
+    \item System functional architecture.
+    The core code execution flow and cross-module calling relationships are illustrated in Figure~\ref{fig:openpi_architecture}. The figure summarises the software execution path from environment state perception and DSRL-guided VLA inference, through the multi-stage smoothing pipeline (EMA $\to$ QP $\to$ Cubic Transition), to final motor command dispatch.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    font=\small,
+    >=Latex,
+    node distance=1.0cm and 1.4cm,
+    %--- Left column: high-level modules (blue tint) ---
+    block/.style={
+        draw, rounded corners, align=center,
+        minimum width=6.0cm, minimum height=1.1cm,
+        fill=blue!6, text width=5.6cm
+    },
+    %--- Right column: detailed pipeline steps (grey tint) ---
+    subblock/.style={
+        draw, rounded corners, align=left,
+        minimum width=5.2cm, minimum height=1.0cm,
+        fill=gray!8, text width=4.8cm
+    },
+    arrow/.style={->, thick},
+    feedback/.style={->, thick, dashed, gray}
+]
+
+%% ---- LEFT COLUMN (system-level) ----
+\node[block] (obs) at (0,0)
+    {Observation Interface\\[2pt]
+     \footnotesize Multi-camera images, robot proprioceptive state, task prompt};
+
+\node[block, below=of obs] (policy)
+    {Policy Runtime\\[2pt]
+     \footnotesize Checkpoint loading, image preprocessing, VLA inference};
+
+\node[block, below=of policy] (post)
+    {Action Post-processing\\[2pt]
+     \footnotesize EMA smoothing, QP constraint enforcement, Cubic transition};
+
+\node[block, below=of post] (exec)
+    {Motion Execution Layer\\[2pt]
+     \footnotesize Action queue management, low-level command dispatch (50\,Hz)};
+
+\node[block, below=of exec] (fb)
+    {Closed-loop Feedback\\[2pt]
+     \footnotesize Receding-horizon replanning with updated observations};
+
+% Left-column arrows
+\draw[arrow] (obs)    -- (policy);
+\draw[arrow] (policy) -- (post);
+\draw[arrow] (post)   -- (exec);
+\draw[arrow] (exec)   -- (fb);
+
+% Feedback loop: right side of left column
+\draw[feedback] (fb.east)  -- ++(0.5,0)
+                            -- ++(0, 10.0)
+                            -- (obs.east)
+                node[pos=0.5, right, align=left]{\footnotesize next\\[-2pt]\footnotesize observation};
+
+%% ---- RIGHT COLUMN (detailed pipeline steps) ----
+\node[subblock] (r1) at (9.2, 0)       {1.\ Observation acquisition};
+\node[subblock, below=of r1]  (r2)     {2.\ Prompt / state / image packaging};
+\node[subblock, below=of r2]  (r3)     {3.\ Inference worker process (async)};
+\node[subblock, below=of r3]  (r4)     {4.\ VLA action chunk prediction};
+\node[subblock, below=of r4]  (r5)     {5.\ Alignment with buffered old actions};
+\node[subblock, below=of r5]  (r6)     {6.\ EMA smooth $\to$ QP clip $\to$ Cubic transition};
+\node[subblock, below=of r6]  (r7)     {7.\ Action queue update \& robot execution};
+
+% Right-column arrows
+\draw[arrow] (r1) -- (r2);
+\draw[arrow] (r2) -- (r3);
+\draw[arrow] (r3) -- (r4);
+\draw[arrow] (r4) -- (r5);
+\draw[arrow] (r5) -- (r6);
+\draw[arrow] (r6) -- (r7);
+
+% Feedback loop: right side of right column
+\draw[feedback] (r7.east) -- ++(0.5,0)
+                           -- ++(0, 9.0)
+                           -- (r1.east)
+               node[pos=0.5, right, align=left]{\footnotesize closed-loop\\[-2pt]\footnotesize update};
+
+%% ---- CROSS-COLUMN CONNECTORS ----
+% Policy Runtime -> Step 1 (observation acquisition)
+\draw[arrow, gray!70] (policy.east) -- ++(0.3,0) |- (r1.west)
+    node[midway, above, sloped, font=\footnotesize, gray]{expand};
+
+% Action Post-processing -> Step 6 (smoothing)
+\draw[arrow, gray!70] (post.east) -- ++(0.3,0) |- (r6.west);
+
+\end{tikzpicture}
+\caption{Overview of the \textit{openpi}~\cite{black2024pi0} online inference architecture. Left: high-level system modules forming the closed-loop control pipeline. Right: detailed step-by-step inference pipeline. The system acquires multi-modal observations, performs VLA policy inference to predict an action chunk, refines the trajectory through EMA smoothing, QP constraint enforcement, and Cubic inter-chunk transition, and executes commands on the robot at 50\,Hz in a receding-horizon closed-loop manner.}
+\label{fig:openpi_architecture}
+\end{figure}
+
+\section{Task Definition and Dataset Construction}
+
+Having established the hardware and software experimental platforms, this section formally defines the physical manipulation task used to evaluate system performance, together with its stringent success criteria. With reference to the out-of-distribution generalisation problem identified in Chapter~3, the section further describes the dataset construction process incorporating the Recovery-and-Correction (RaC) mechanism, presents the full fine-tuning configuration for the base VLA model, and enumerates the ablation baselines used to comprehensively validate the proposed methods.
+
+\subsection{Long-Horizon Task Definition and Success Criteria}
+
+The core evaluation task is defined as six consecutive rounds of precision PCB grasping and tray placement. In a single complete trial, the system must execute the following pipeline loop: (1)~identify the thin PCB board on the conveyor $\rightarrow$ (2)~descend and close the gripper to grasp it $\rightarrow$ (3)~lift and translate to above the tray $\rightarrow$ (4)~align with the target tray slot and place $\rightarrow$ (5)~retract and prepare for the next round. Since the physical clearance between the PCB board and the conveyor/tray slots is less than 3\,mm throughout, the task requires accurate control under narrow-clearance conditions.
+
+To faithfully reflect system reliability at an industrial-grade level, the criterion for single-trial success is deliberately stringent: the manipulator must complete all six consecutive pick-and-place rounds continuously, with no material drop and no physical collision between the gripper and any environmental surface throughout the entire sequence. Any collision or drop at any stage of the six rounds constitutes immediate and complete trial failure. This long-horizon, zero-fault-tolerance sequential success criterion places extreme demands on the system's ability to overcome compounding errors.
+
+\subsection{Corner Case Classification and Handling Strategy}
+
+Based on the Recovery-and-Correction (RaC) theory~\cite{ke2025rac} developed in this thesis, the experiment classifies the typical corner cases that arise in a real production-line setting and addresses each class through targeted data collection.
+
+\begin{itemize}
+    \item Dynamic corner cases: trajectory deviations caused by external disturbances or prediction bias during motion. These are further subdivided into \textit{Pick Deviation} (deviation during grasping approach), \textit{Move Deviation} (deviation during transport), and \textit{Place Deviation} (deviation during placement). The system responds with the RaC strategy: the manipulator is first guided to retreat (\emph{Recovery}) to a safe initial pose, after which the correct execution trajectory is relaunched (\emph{Correction}). Figure~\ref{fig:rac_ood} presents representative corrective trajectories for Pick and Place deviation scenarios observed in real deployment.
+    \item Static corner cases: logical anomalies in environmental state, such as \emph{No Tray} or \emph{Tray Full}. The system's response is to force the manipulator to remain stationary in a safe initial pose upon detecting the anomalous visual feature, thereby actively suppressing any divergent actions.
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/OOD_pick_edit}
+        \caption{Pick-phase deviation recovery. The manipulator detects an off-axis approach to the conveyor grasping zone, retreats to the pre-grasp pose, and reattempts the grasp correctly.}
+        \label{fig:ood_pick}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/OOD_place_edit}
+        \caption{Place-phase deviation recovery. The manipulator detects a misalignment above the tray, retreats to the pre-placement pose, and reattempts the placement.}
+        \label{fig:ood_place}
+    \end{subfigure}
+    \caption{Real-deployment RaC corrective trajectories for dynamic corner cases. In both Pick and Place deviation scenarios, the system autonomously executes a \emph{Recovery} retreat to the initial-stage distribution before relaunching the correct task execution (\emph{Correction}).}
+    \label{fig:rac_ood}
+\end{figure}
+
+\subsection{Dataset Construction and Full Model Fine-Tuning}
+
+To support fine-tuning of the base VLA model and subsequent DSRL policy steering, a dedicated real-robot manipulation dataset was constructed using a human-in-the-loop teleoperation pipeline. The dataset comprises 300 complete expert demonstration trajectories distributed as follows:
+
+\begin{enumerate}
+    \item Standard expert data (250 trajectories): each trajectory records a smooth, collision-free completion of all six consecutive pick-and-place rounds under nominal conditions, establishing the foundation model's core visual-to-motor mapping capability.
+    \item Boundary intervention data (50 trajectories): actively collected to address the corner cases defined in Section~4.3.2. This subset contains dynamic deviation-recovery-retry sequences for Pick, Move, and Place stages, as well as static hovering demonstrations under \emph{No Tray} and \emph{Tray Full} conditions.
+\end{enumerate}
+
+For model training, the open-source $\pi_{0.5}$ base weights~\cite{black2025pi05} (\texttt{pi05\_base}) are subject to full-parameter fine-tuning. To meet the computational demands of a model with tens of billions of parameters, training is conducted on a node of 8 NVIDIA H100 GPUs using Fully Sharded Data Parallelism (FSDP) for memory-efficient distributed training. The key hyperparameters are as follows: global batch size of 512; total training steps of 100{,}000; cosine decay learning rate schedule with a 1{,}000-step linear warmup to a peak learning rate of $1\times10^{-4}$, followed by smooth decay to a final value of $1\times10^{-5}$.
+
+\subsection{Ablation Baselines Setup}
+
+To quantify the individual performance contribution of each proposed optimisation mechanism, five progressively augmented system configurations are evaluated in an ablation study. Each configuration undergoes 10 independent real-robot trials of the full six-round PCB pick-and-place task. Because each trial consists of six consecutive grasp-and-place cycles under a zero-fault criterion and requires manual supervision and reset, this evaluation should be regarded as a resource-intensive small-sample real-robot study. Accordingly, the reported results are presented mainly as comparative performance trends rather than as a strong statistical claim. For each baseline, the best-performing checkpoint selected under its own training configuration was used for final evaluation.
+
+\begin{enumerate}
+    \item Baseline 1 --- \emph{Raw $\pi_{0.5}$}: the fine-tuned \texttt{pi05\_base} model used with synchronous blocking inference and no action post-processing. This baseline serves as the plain foundation-model reference without additional system-level or RL-based enhancement.
+    \item Baseline 2 --- \emph{$\pi_{0.5}$ + Async\_Infer}: adds the asynchronous inference architecture and the full multi-stage smoothing pipeline (EMA $\to$ QP $\to$ Cubic transition) on top of Baseline~1. Evaluates the system-level engineering optimisations for oscillation suppression.
+    \item Baseline 3 --- \emph{$\pi_{0.5}$ + Async\_Infer + Corner\_Case}: further augments Baseline~2 with the 50 boundary intervention trajectories included in model fine-tuning. Validates whether targeted data augmentation effectively enables out-of-distribution generalisation.
+    \item Baseline 4 --- \emph{$\pi_{0.5}$ + Async\_Infer + Corner\_Case + DSRL}: introduces reinforcement-learning-based latent-space noise optimisation on top of Baseline~3, but using a conventional \emph{sparse} reward (awarded only upon completion of the full task sequence).
+    \item Ours (full system) --- \emph{$\pi_{0.5}$ + Async\_Infer + Corner\_Case + DSRL\_dense}: builds on Baseline~4 by replacing sparse reward with the proposed dense subtask decomposition and historical-buffer backtracking reward mechanism (12 subtasks, as described in Section~3.2). This represents the complete proposed system.
+\end{enumerate}
+
 
 % =========================================================
-% CHAPTER 5: CONCLUSION
+% CHAPTER 5: DATA PROCESSING AND ANALYSIS
 % =========================================================
-\chapter{CONCLUSION}
+\chapter{DATA PROCESSING AND ANALYSIS}
 
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+This chapter presents a comprehensive data processing and comparative analysis of the five ablation configurations defined in Chapter~4. The evaluation is organised along three dimensions: (1)~overall task success rate and ablation analysis based on the long-horizon pick-and-place task; (2)~trajectory smoothness and kinematic response analysis based on low-level joint commands; and (3)~active correction capability analysis in the face of out-of-distribution (OOD) corner cases.
+
+\section{Task Success Rate and Ablation Analysis}
+
+Following the stringent ``single-trial success'' criterion defined in Section~4.3 (i.e., six consecutive collision-free pick-and-place rounds), each of the five system configurations was evaluated over 10 independent real-robot trials. The experimental success rates and primary failure modes are summarised in Table~\ref{tab:ablation}.
+
+\begin{table}[htbp]
+\centering
+\caption{Success rate comparison of the five ablation configurations on the continuous six-round PCB pick-and-place task. Each configuration was tested for 10 independent trials under the zero-fault-tolerance criterion.}
+\label{tab:ablation}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{@{} >{\raggedright\arraybackslash}p{5.8cm} c X @{}}
+\toprule
+System Configuration & Success Rate & Primary Observations and Failure Modes \\
+\midrule
+Raw $\pi_{0.5}$
+    & 3\,/\,10
+    & Collisions with conveyor and tray; corner-case failures; severe jitter due to abrupt acceleration changes. \\
+\hdashline[0.5pt/2pt]
+$\pi_{0.5}$ + Async\_Infer
+    & 3\,/\,10
+    & Inter-chunk transitions become smoother; minor intra-chunk oscillation persists; corner-case failures remain. \\
+\hdashline[0.5pt/2pt]
+$\pi_{0.5}$ + Async\_Infer + Corner Case
+    & 4\,/\,10
+    & Known static and dynamic corner cases avoided; compounding errors reduced. \\
+\hdashline[0.5pt/2pt]
+$\pi_{0.5}$ + Async\_Infer + Corner Case + DSRL\textsubscript{sparse}
+    & 7\,/\,10
+    & Fewer conveyor/tray collisions were observed in the tested trials; motion smoothness improved; hesitation during transition phases still appeared. \\
+\midrule
+Ours: $\pi_{0.5}$ + Async\_Infer + Corner Case + DSRL\textsubscript{dense}
+    & 9\,/\,10
+    & Fewer collision events were observed in the tested trials; grasping and placement behaviour became more stable; long-horizon sequencing was more coherent. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.78\textwidth]{figures/success_rate}
+    \caption{Task success rate progression across the five ablation configurations. Each bar represents the number of successful trials (out of 10) under the zero-fault-tolerance criterion for six consecutive PCB pick-and-place rounds.}
+    \label{fig:success_rate}
+\end{figure}
+
+\paragraph{In-depth analysis of the experimental data.}
+
+\begin{enumerate}
+    \item Smoothing alone cannot resolve spatial accuracy deficits.
+    Comparing Baseline~1 and Baseline~2, the introduction of the asynchronous inference architecture and multi-stage smoothing pipeline (Async\_Infer) yields visibly smoother manipulator motion, but the task success rate remains unchanged at 3/10. This observation is consistent with the role of smoothing: EMA, QP, and cubic transition mainly improve continuity of the commanded trajectory, but they do not directly correct the spatial target predicted by the foundation model. Therefore, when the VLA model predicts an incorrect grasping or placement location, smoother execution alone may still fail to complete the task. The comparison suggests that, for fine-grained manipulation, engineering-side smoothing improves execution quality but is not by itself sufficient to recover spatial accuracy errors.
+
+    \item Fundamental difference between sparse and dense reward.
+    Comparing Baseline~4 (7/10) and Ours (9/10), both systems already include DSRL latent-space noise optimisation; the main difference is the replacement of sparse reward with the proposed dense subtask decomposition and historical-buffer backtracking reward mechanism. Under sparse reward, hesitation and stalling still appear during intermediate transition states---for example, between grasping and placement, or between consecutive rounds. After introducing dense reward, the long-horizon success rate increases from 7/10 to 9/10, suggesting that finer-grained credit assignment improves policy optimisation on this task. Given the limited real-robot sample size, this result is better interpreted as a clear empirical trend rather than a strong statistical claim.
+\end{enumerate}
+
+\section{Trajectory Smoothness and Kinematic Response Analysis}
+
+To examine the practical engineering value of the EMA--QP--Cubic multi-stage smoothing pipeline proposed in Section~3.4, this section extracts joint-level commanded position sequences from real-robot execution and computes the corresponding velocity curves by numerical differentiation. The kinematic waveforms of the raw VLA output (without smoothing) are then compared against those produced by the full post-processing pipeline.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/without_smooth_edit}
+        \caption{Raw VLA output (no post-processing). The bottom velocity panel exhibits extreme high-frequency oscillation and discontinuous spikes, particularly in the 1--5\,s interval.}
+        \label{fig:without_smooth}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/with_smooth_edit}
+        \caption{After multi-stage post-processing (EMA + QP + Cubic). The velocity profile becomes smooth, continuous, and free of sharp transients.}
+        \label{fig:with_smooth}
+    \end{subfigure}
+    \caption{Comparison of joint position and derived velocity waveforms during real-robot execution. Left: raw VLA predictions exhibit severe high-frequency jitter in the velocity domain. Right: after multi-stage smoothing, the velocity curve is reshaped into a smooth, physically realisable signal.}
+    \label{fig:smooth_comparison}
+\end{figure}
+
+\paragraph{Inherent lack of explicit kinematic constraints in VLA models.}
+Contemporary VLA models such as $\pi_{0.5}$~\cite{black2025pi05} predict absolute joint-position sequences in an end-to-end fashion, without explicitly considering low-level kinematic constraints such as velocity and acceleration limits. This purely position-fitting generative paradigm introduces high-frequency noise between adjacent timesteps. As shown in the bottom velocity panel of Figure~\ref{fig:without_smooth}, numerically differentiating the commanded joint-position sequence reveals clear high-frequency oscillation and sharp velocity spikes---particularly in the 1--5\,s interval. These discontinuities in the commanded signal are consistent with the visible jitter observed during fine-grained execution.
+
+\paragraph{Velocity curve reshaping via multi-stage post-processing.}
+After applying the action post-processing pipeline designed in this thesis, the low-level command behaviour becomes visibly smoother. Comparing the bottom velocity panel of Figure~\ref{fig:with_smooth} with its unprocessed counterpart, the previously fragmented velocity curve becomes more continuous and less noisy.
+
+This contrast supports the practical value of the smoothing pipeline: EMA suppresses high-frequency fluctuation in the commanded signal, the QP step regularises abrupt command changes under kinematic constraints, and the cubic transition improves continuity at chunk boundaries. Since the present figure reports numerically differentiated velocity curves rather than direct torque or acceleration measurements, the evidence here is most directly interpreted as an improvement in command smoothness and continuity during execution.
+
+\section{Corner Case Active Correction Analysis}
+
+In addition to the nominal long-horizon task evaluation, corner-case behaviour was examined during the 10 complete real-robot trials. The collected corner cases included two static anomalies---\emph{PCB present but no tray}, and \emph{tray available but no PCB on the conveyor}---as well as two dynamic deviation cases, namely \emph{pick-phase deviation} and \emph{place-phase deviation}. During testing, one of the ten full trials was intentionally arranged to include corner-case settings within its six grasp-and-place rounds. The observations in this section are therefore reported as representative case analyses rather than as separate statistical rates.
+
+\begin{enumerate}
+    \item Static corner case: logical constraint enforcement.
+    Two static logical anomalies were included in the corner-case set: (i)~PCB present on the conveyor but no tray available, and (ii)~tray available but no PCB on the conveyor. In both cases, the expected behaviour is for the manipulator to remain stationary at the safe initial pose rather than execute a spurious grasping or placement motion. During testing, the raw $\pi_{0.5}$ policy tended to continue task execution despite the violated precondition, whereas the system augmented with static hovering data was able to remain at the initial pose and suppress unnecessary motion under these corner-case conditions.
+
+    \item Dynamic corner case: backtrack-and-retry behaviour.
+    Two dynamic deviation cases were considered in data collection and testing: deviation during the pick phase and deviation during the place phase. In these situations, the expected response is not to continue the current precise motion from the deviated state, but to first execute \emph{Recovery} and then \emph{Correction}. In the representative tested case, when the manipulator was deliberately perturbed by more than 5\,cm from the nominal trajectory, the system did not directly continue the next high-precision action from the deviated position. Instead, it first moved back to a safer, better-covered pose and then relaunched the intended grasping or placement motion. This behaviour is consistent with the Recovery-and-Correction design introduced in Chapter~3.
+\end{enumerate}
+
+Taken together, the comparative observations above indicate that the joint framework proposed in this thesis---\emph{latent-space reinforcement-learning guidance} + \emph{asynchronous multi-stage smoothing} + \emph{boundary-case correction}---substantially improves the performance of the baseline VLA system on the tested fine-grained manipulation setting. Within the scope of the present experiments, the method improves long-horizon task completion, produces smoother commanded trajectories, and shows better behavioural stability under representative corner-case conditions.
 
 % =========================================================
-% CHAPTER 6: FUTURE WORK
+% CHAPTER 6: CONCLUSION AND FUTURE WORK
 % =========================================================
-\chapter{FUTURE WORK}
+\chapter{CONCLUSION AND FUTURE WORK}
 
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+\section{Conclusion}
 
-% =========================================================
-% CHAPTER 7: [TITLE] (Placeholder)
-% =========================================================
-\chapter{[CLICK AND TYPE CHAPTER TITLE]}
+In recent years, end-to-end Vision-Language-Action (VLA) foundation models have demonstrated strong generalisation and semantic understanding capabilities~\cite{brohan2023rt2,black2024pi0,black2025pi05} in the field of embodied intelligence. However, when such models are directly applied to fine-grained manipulation scenarios---such as industrial assembly lines---a series of practical limitations are exposed: the massive parameter count entails inference latencies incompatible with high-frequency control; the absence of explicit kinematic constraints leads to trajectory jitter and acceleration spikes that readily cause physical collisions; and compounding errors during long-horizon execution frequently drive the manipulator into out-of-distribution (OOD) failure states. Moreover, performing full fine-tuning or reinforcement-learning optimisation directly on a multi-billion-parameter foundation model under limited computational resources incurs prohibitive cost and gradient instability.
 
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+To address these challenges, this thesis takes the long-horizon precision task of grasping ultra-thin PCB boards and placing them into tray slots with the Piper manipulator as its research context, and proposes a lightweight VLA policy-steering and system-enhancement framework. In particular, the proposed steering mechanism does not require updating the backbone during RL. The core contributions and conclusions are as follows.
 
-% =========================================================
-% CHAPTER 8: [TITLE] (Placeholder)
-% =========================================================
-\chapter{[CLICK AND TYPE CHAPTER TITLE]}
+\paragraph{1. Algorithmic contribution: Improved DSRL with Dense Reward.}
+This thesis verifies the feasibility of improving VLA spatial precision~\cite{wang2025dsrl} by performing reinforcement-learning optimisation solely on the model's input side---specifically, the initial latent noise space of the flow-matching process---while keeping the backbone frozen during RL. To alleviate the sparse-reward difficulty faced by the original DSRL algorithm in long-horizon tasks, the six-round pick-and-place task is decomposed into 12 key subtasks, coupled with a human-in-the-loop three-tier scoring mechanism. Through the introduction of a historical-buffer backtracking reward technique, the timing mismatch inherent in manual scoring is reduced, providing denser optimisation signals for the policy network and improving action quality during intermediate transition phases.
 
-\section*{\normalfont [CLICK AND TYPE CHAPTER SECTION TITLE]}
+\paragraph{2. Engineering contribution: Asynchronous Inference Architecture and Multi-Stage Trajectory Smoothing.}
+To address the high inference cost of foundation models, a master-worker dual-track asynchronous architecture is designed at the system software level. Leveraging the Action Chunking mechanism, the model's forward-pass latency can be largely hidden within the physical execution time window, supporting high-frequency command delivery at 30\,Hz in the tested system configuration. Concurrently, to mitigate the inherent jitter caused by the VLA model's lack of explicit kinematic constraints, a multi-stage post-processing pipeline---EMA denoising $\rightarrow$ QP kinematic-constraint clipping $\rightarrow$ Cubic spline inter-chunk transition---is constructed. This pipeline improves the smoothness and continuity of the commanded position sequence and reduces abrupt velocity changes at the signal level.
+
+\paragraph{3. Data-level contribution: Corner Case Handling via Recovery and Correction (RaC)~\cite{ke2025rac}.}
+To reduce compounding-error accumulation during long-horizon operation, out-of-distribution states (e.g., missing tray, manipulator perturbation-induced deviation) are deliberately introduced into the data augmentation pipeline. Based on the state-distribution funnel effect, the system is further enhanced with Recovery-and-Correction (RaC) data~\cite{ke2025rac}. In the representative tested corner-case scenarios, this data augmentation strategy helps the system avoid static logical anomalies and supports recovery-then-correction behaviour after dynamic deviation.
+
+\paragraph{Overall experimental conclusion.}
+Through 10 independent multi-round long-horizon ablation trials conducted in a real physical environment, this thesis shows that the raw VLA model achieves a success rate of only 30\% for fine-grained manipulation under the zero-fault-tolerance criterion. After incorporating the proposed latent-space reinforcement-learning guidance, asynchronous multi-stage smoothing, and corner-case handling mechanisms, the system improves the smoothness of the commanded trajectory and raises the final success rate for the stringent six-round zero-fault-tolerance task to 90\%.
+
+In summary, the central conclusion of this thesis is that the proposed steering mechanism can improve fine-grained manipulation performance without updating the VLA backbone during RL. Combined with asynchronous execution, post-processing-based trajectory smoothing, and corner-case-oriented data augmentation, this framework substantially compensates for several practical shortcomings of current embodied foundation models in the tested long-horizon manipulation setting.
+
+\section{Limitations and Future Work}
+
+Although the latent-space reinforcement-learning and multi-stage smoothing framework proposed in this thesis improves performance on the tested long-horizon fine-grained manipulation task, the current engineering implementation and algorithmic design still exhibit certain limitations. The following discussion identifies these limitations and outlines corresponding directions for future research.
+
+\paragraph{1. Cost of Human-in-the-Loop Reward Acquisition.}
+\begin{itemize}
+    \item Limitation.
+    To address the credit-assignment problem in long-horizon tasks, this thesis designs a dense reward mechanism in which a human operator provides real-time three-tier scores. Although the historical-buffer backtracking technique reduces timing mismatch in manual scoring, this heavy reliance on human-in-the-loop data collection and online RL training is costly, difficult to scale to datasets comprising hundreds or thousands of distinct tasks, and restricts the system's capacity for unsupervised lifelong autonomous learning.
+    \item Future direction.
+    Future research may explore automated reward generation mechanisms. For example, a compact Vision-Language Model (VLM) could serve as a reward model, leveraging visual commonsense to automatically assess whether the current video frame satisfies a given subtask semantic objective, thereby reducing reliance on manual scoring and supporting larger-scale self-improvement.
+\end{itemize}
+
+\paragraph{2. Representational Limits of RL Steering.}
+\begin{itemize}
+    \item Limitation.
+    In this work the intervention scope of the DSRL algorithm is strictly confined to the initial high-dimensional latent noise ($w_t$) of the flow-matching denoising process. Because the visual encoder and backbone weights of $\pi_{0.5}$~\cite{black2025pi05} are entirely frozen, the RL policy can only perform \emph{post-hoc selection} within the existing action distribution; it cannot fundamentally alter the model's low-level visual attention or its semantic understanding of textual instructions.
+    \item Future direction.
+    Subsequent work may broaden the RL policy's steering dimensions across the full VLA architecture. Beyond optimising noise on the action-decoding side, one could explore learnable prompt embeddings on the encoding side---for instance, using RL to dynamically optimise the image encoder's visual feature vectors or to generate text-prompt corrections (prompt tuning). Such a transition from ``shallow action steering'' to ``deep semantic steering'' may further improve the foundation model's adaptation to novel objects and scenes.
+\end{itemize}
+
+\paragraph{3. Vulnerability of Asynchronous Open-Loop Execution to Dynamic Environmental Changes.}
+\begin{itemize}
+    \item Limitation.
+    The asynchronous inference architecture designed in this thesis improves action-chunk handover by temporally hiding part of the inference delay. However, this mechanism implicitly assumes that the environment remains quasi-static over the execution horizon of a single action chunk. During the several-hundred-millisecond inference window, the master process effectively operates in a local open-loop mode. If unpredictable, rapid environmental changes occur within this window (e.g., a sudden conveyor speed shift, a falling obstacle, or dynamic human--robot interaction), the system cannot respond until the current chunk completes, potentially causing task failure or collision.
+    \item Future direction.
+    To bridge the gap between low-frequency complex reasoning and high-frequency dynamic response, a lightweight residual correction module could be introduced into the master process. This module would directly consume the 30\,Hz proprioceptive feedback and visual perception stream and apply small real-time offset corrections to the foundation model's action chunk before motor dispatch---for example, dynamic obstacle avoidance or closed-loop force control---thereby reducing the physical risks associated with asynchronous inference latency.
+\end{itemize}

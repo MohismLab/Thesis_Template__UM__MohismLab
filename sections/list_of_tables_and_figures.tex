@@ -1,14 +1,20 @@
 
 \makeatletter
+\newcommand{\loflotheadertext}[1]{{\fontspec{TeX Gyre Termes Italic}\fontsize{12pt}{14pt}\selectfont #1}}
 
-% 1. 重定义 \listoffigures (图目录)
+% 1. 重定义 \listoffigures (图目录) — with Number / Page header
 \renewcommand\listoffigures{%
 	\begin{center}
 		\vspace*{-1cm} 
 		{\normalfont\fontsize{14pt}{16pt}\selectfont LIST OF FIGURES}
 	\end{center}
 	\vspace{1em}
-	\@starttoc{lof} 
+	\noindent\loflotheadertext{Number}\hfill\loflotheadertext{Page}\par
+	\vspace{-2.5em}
+	\begingroup
+	\let\addvspace\@gobble
+	\@starttoc{lof}
+	\endgroup
 }
 
 
@@ -18,7 +24,12 @@
 		{\normalfont\fontsize{14pt}{16pt}\selectfont LIST OF TABLES}
 	\end{center}
 	\vspace{1em}
+	\noindent\loflotheadertext{Number}\hfill\loflotheadertext{Page}\par
+	\vspace{-1.6em}
+	\begingroup
+	\let\addvspace\@gobble
 	\@starttoc{lot}
+	\endgroup
 }
 
 \makeatother
@@ -47,5 +58,33 @@
 	{\normalfont\fontsize{14pt}{16pt}\selectfont LIST OF ABBREVIATIONS}
 \end{center}
 
-\vspace{1em}
+\vspace{2.6em}
 
+\newcommand{\abbreviationentry}[2]{%
+	\noindent\hspace*{0em}\textbf{Abbreviation.}#1(#2)\par\vspace{-0.5em}
+}
+
+% \abbreviationentry{API}{Application Programming Interface}
+% \abbreviationentry{AWR}{Advantage-Weighted Regression}
+\abbreviationentry{BC}{Behavioural Cloning}
+% \abbreviationentry{CPU}{Central Processing Unit}
+% \abbreviationentry{DDIM}{Denoising Diffusion Implicit Models}
+% \abbreviationentry{DDS}{Data Distribution Service}
+% \abbreviationentry{DPPO}{Diffusion Policy Policy Optimisation}
+% \abbreviationentry{DRaFT}{Directly Fine-Tuning Diffusion Models on Differentiable Rewards}
+\abbreviationentry{DSRL}{Diffusion Steering via Reinforcement Learning}
+\abbreviationentry{EMA}{Exponential Moving Average}
+% \abbreviationentry{FSDP}{Fully Sharded Data Parallelism}
+% \abbreviationentry{GPU}{Graphics Processing Unit}
+% \abbreviationentry{LLM}{Large Language Model}
+% \abbreviationentry{LoRA}{Low-Rank Adaptation}
+\abbreviationentry{MDP}{Markov Decision Process}
+% \abbreviationentry{ODE}{Ordinary Differential Equation}
+\abbreviationentry{OOD}{Out-of-Distribution}
+\abbreviationentry{QP}{Quadratic Programming}
+\abbreviationentry{RaC}{Recovery and Correction}
+% \abbreviationentry{RAM}{Random Access Memory}
+\abbreviationentry{RL}{Reinforcement Learning}
+% \abbreviationentry{TD}{Temporal Difference}
+\abbreviationentry{VLA}{Vision-Language-Action}
+% \abbreviationentry{VLM}{Vision-Language Model}

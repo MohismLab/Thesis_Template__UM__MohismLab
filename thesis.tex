@@ -38,6 +38,7 @@
 	
 	% 致谢 (iv)
 	\input{sections/acknowledgement.tex}
+	\clearpage
 	
 	% 切换到正文页码：抑制 \pagenumbering 的清页，避免与 \chapter 的清页叠加
 	\begingroup
@@ -56,7 +57,7 @@
 	
 	
 	% --- 4. 参考文献 ---
-	\nocite{*} % 如果希望列出所有参考文献（包括未引用的），取消注释此行
+	% \nocite{*} % 如果希望列出所有参考文献（包括未引用的），取消注释此行
 	\renewcommand{\bibsection}{\chapter*{\bibname}}
 	\phantomsection
 	\addcontentsline{toc}{chapter}{REFERENCES}
@@ -64,8 +65,11 @@
 	\clearpage
 	
 	% --- 5. 附录 ---
-	\appendix
-	\input{sections/appendix.tex}
+	% \appendix
+	% \input{sections/appendix.tex}
 	% 【注意】文档结束前不需要加 \clearpage
+	% 当前不包含附录，抑制 \end{document} 的收尾清页，避免尾部空白页。
+	\let\clearpage\relax
+	\let\cleardoublepage\relax
 	
 \end{document}

@@ -5,27 +5,29 @@
 
 \begin{center}
 	% 注意：去掉多余的花括号和空格，确保没有隐形空格干扰居中
-	{University of Macau} \\[1.0cm]
+	{University of Macau} \\[0.1cm]
 	
-	{\textbf{Abstract}} \\[1.0cm]
+	Abstract\\[0.1cm]
 	
-	{\textbf{[Click and Type Title]}} \\[0.5cm]
+	{Research on Policy Steering and Real-Time Inference System of VLA Models for} \\[-0.3cm]
+	{for Fine-Grained Manipulation Tasks} \\[0.5cm]
+
+	by Tiantian Zhang (MC453513) \\[0.1cm]
 	
-	by [Click and type Your Name] (Student no.) \\[1.0cm]
+	Project Supervisor \\[-0.3cm]
+	{Assistant Professor Qingbiao Li} \\[0.1cm]
 	
-	Project Supervisor \\
-	{[Click and type academic title of supervisor then type name of supervisor]} \\[0.5cm]
-	
-	Project Co-Supervisor \\
-	{[Click and type academic title of supervisor then type name of supervisor]} \\[1.0cm]
-	
-	{[Click and type your program name]}
+	{M.Sc. in Robotics and Autonomous Systems}
 \end{center}
 
 \vspace{1.0cm}
 
 % 摘要正文
-\noindent [Click and type abstract text] 
+\noindent This thesis investigates the deployment of Vision-Language-Action (VLA) foundation models in fine-grained robotic manipulation tasks. The target task considered in this work is a long-horizon PCB pick-and-place process, in which a Piper manipulator repeatedly grasps ultra-thin PCB boards from a conveyor and inserts them into narrow tray slots. Although recent VLA models such as $\pi_{0.5}$ exhibit strong semantic generalisation and broad task adaptability, their direct use in high-precision industrial settings remains limited by high inference latency, discontinuous action-chunk execution, and weak robustness under long-horizon out-of-distribution states.
+
+To address these issues, this thesis proposes a lightweight policy-steering and system-enhancement framework for fine-grained manipulation. First, a latent-space reinforcement-learning method based on Diffusion Steering via Reinforcement Learning (DSRL) is introduced. Reinforcement learning is applied to the initial latent noise space of the flow-matching action generator, so that the VLA backbone remains frozen during RL. To improve optimisation on long-horizon tasks, a human-in-the-loop dense reward mechanism is further designed through subtask decomposition and historical-buffer backtracking. Second, a real-time deployment architecture is developed for physical execution, combining asynchronous inference with a multi-stage action smoothing pipeline composed of exponential moving average filtering, quadratic-programming-based kinematic constraint enforcement, and cubic interpolation at chunk boundaries. Third, a Recovery-and-Correction data augmentation strategy is incorporated to improve robustness in representative static and dynamic corner-case scenarios.
+
+Real-robot experiments on a six-round zero-fault-tolerance PCB pick-and-place task show that the raw VLA system achieves a success rate of 30\%, whereas the complete framework improves the success rate to 90\% in the tested setting. The results also indicate smoother commanded trajectories and better behavioural stability under representative corner-case conditions. Overall, this work provides a practical approach for adapting large VLA models to fine-grained industrial manipulation tasks under limited computational resources.
 
 % =========================================================
 % 3. 恢复原来的页边距 (不影响后续页面的装订线设置)
