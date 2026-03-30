@@ -4,15 +4,14 @@
 %\addcontentsline{toc}{chapter}{Abstract}
 
 \begin{center}
-	% 注意：去掉多余的花括号和空格，确保没有隐形空格干扰居中
 	{University of Macau} \\[0.1cm]
 	
 	Abstract\\[0.1cm]
 	
-	{Research on Policy Steering and Real-Time Inference System of VLA Models for} \\[-0.3cm]
-	{for Fine-Grained Manipulation Tasks} \\[0.5cm]
+	{[Thesis Title Line 1]} \\[-0.3cm]
+	{[Thesis Title Line 2]} \\[0.5cm]
 
-	by Tiantian Zhang (MC453513) \\[0.1cm]
+	by [Student Name] ([Student ID]) \\[0.1cm]
 	
 	Project Supervisor \\[-0.3cm]
 	{Assistant Professor Qingbiao Li} \\[0.1cm]
@@ -22,14 +21,8 @@
 
 \vspace{1.0cm}
 
-% 摘要正文
-\noindent This thesis investigates the deployment of Vision-Language-Action (VLA) foundation models in fine-grained robotic manipulation tasks. The target task considered in this work is a long-horizon PCB pick-and-place process, in which a Piper manipulator repeatedly grasps ultra-thin PCB boards from a conveyor and inserts them into narrow tray slots. Although recent VLA models such as $\pi_{0.5}$ exhibit strong semantic generalisation and broad task adaptability, their direct use in high-precision industrial settings remains limited by high inference latency, discontinuous action-chunk execution, and weak robustness under long-horizon out-of-distribution states.
+\noindent This template provides a clean starting point for preparing a thesis in LaTeX. Replace this paragraph with a concise summary of your research problem, motivation, methodology, and main findings. A typical abstract briefly explains the background of the study, the research objective, the approach taken, and the principal conclusion.
 
-To address these issues, this thesis proposes a lightweight policy-steering and system-enhancement framework for fine-grained manipulation. First, a latent-space reinforcement-learning method based on Diffusion Steering via Reinforcement Learning (DSRL) is introduced. Reinforcement learning is applied to the initial latent noise space of the flow-matching action generator, so that the VLA backbone remains frozen during RL. To improve optimisation on long-horizon tasks, a human-in-the-loop dense reward mechanism is further designed through subtask decomposition and historical-buffer backtracking. Second, a real-time deployment architecture is developed for physical execution, combining asynchronous inference with a multi-stage action smoothing pipeline composed of exponential moving average filtering, quadratic-programming-based kinematic constraint enforcement, and cubic interpolation at chunk boundaries. Third, a Recovery-and-Correction data augmentation strategy is incorporated to improve robustness in representative static and dynamic corner-case scenarios.
+\noindent Keep the abstract self-contained and avoid overly detailed citations, formulas, or figure references. If required by your programme, you may also add a short list of keywords below this paragraph.
 
-Real-robot experiments on a six-round zero-fault-tolerance PCB pick-and-place task show that the raw VLA system achieves a success rate of 30\%, whereas the complete framework improves the success rate to 90\% in the tested setting. The results also indicate smoother commanded trajectories and better behavioural stability under representative corner-case conditions. Overall, this work provides a practical approach for adapting large VLA models to fine-grained industrial manipulation tasks under limited computational resources.
-
-% =========================================================
-% 3. 恢复原来的页边距 (不影响后续页面的装订线设置)
-% =========================================================
 \restoregeometry
