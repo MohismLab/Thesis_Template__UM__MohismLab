@@ -26,6 +26,7 @@
 	\input{sections/abstract.tex}
 	
 	\input{sections/table_of_contents}
+	\clearpage
 	
 	% --- 2. 罗马数字页码区域 (从 List of Figures 开始为 i) ---
 	\hypersetup{pageanchor=true} 
@@ -34,18 +35,27 @@
 	\setcounter{page}{1}         
 	
 	\input{sections/list_of_tables_and_figures}
-	\clearpage
 	
 	% 致谢 (iv)
 	\input{sections/acknowledgement.tex}
 	\clearpage
 	
-	% 切换到正文页码：抑制 \pagenumbering 的清页，避免与 \chapter 的清页叠加
+	% 切换到正文页码：先输出致谢页，再避免正文第一个 \chapter 额外清出空白页
+	\let\savedclearpage\clearpage
+	\let\savedcleardoublepage\cleardoublepage
 	\begingroup
-	\let\origclearpage\clearpage
 	\let\clearpage\relax
+	\let\cleardoublepage\relax
 	\pagenumbering{arabic}
 	\endgroup
+	\def\clearpage{%
+		\global\let\clearpage\savedclearpage
+		\global\let\cleardoublepage\savedcleardoublepage
+	}
+	\def\cleardoublepage{%
+		\global\let\clearpage\savedclearpage
+		\global\let\cleardoublepage\savedcleardoublepage
+	}
 	
 	% --- 3. 正文 (阿拉伯数字页码 1, 2, 3...) ---
 	% 保持 \mainmatter 的编号语义，但不触发额外换页
